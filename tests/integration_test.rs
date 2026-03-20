@@ -580,3 +580,333 @@ fn test_run_source_error() {
     let result = corvo_lang::run_source("invalid syntax here");
     assert!(result.is_err());
 }
+
+// --- @ Variable Shortcut Tests ---
+
+#[test]
+fn test_at_var_set_shortcut() {
+    let state = run_with_state(
+        r#"
+        @name = "Corvo"
+        @count = 42
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("name").unwrap(),
+        corvo_lang::type_system::Value::String("Corvo".to_string())
+    );
+    assert_eq!(
+        state.var_get("count").unwrap(),
+        corvo_lang::type_system::Value::Number(42.0)
+    );
+}
+
+#[test]
+fn test_at_var_get_shortcut() {
+    let state = run_with_state(
+        r#"
+        @greeting = "hello"
+        @result = string.to_upper(@greeting)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("result").unwrap(),
+        corvo_lang::type_system::Value::String("HELLO".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_shortcut_in_expression() {
+    let state = run_with_state(
+        r#"
+        @a = 10
+        @b = 20
+        @sum = math.add(@a, @b)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("sum").unwrap(),
+        corvo_lang::type_system::Value::Number(30.0)
+    );
+}
+
+#[test]
+fn test_at_var_shortcut_interop_with_var_get_set() {
+    let state = run_with_state(
+        r#"
+        var.set("x", 100)
+        @y = math.add(@x, 1)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("y").unwrap(),
+        corvo_lang::type_system::Value::Number(101.0)
+    );
+}
+
+#[test]
+fn test_at_var_get_in_string_interpolation() {
+    let state = run_with_state(
+        r#"
+        @name = "World"
+        @msg = "Hello ${@name}!"
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("msg").unwrap(),
+        corvo_lang::type_system::Value::String("Hello World!".to_string())
+    );
+}
+
+// --- dont_panic Block Tests ---
+
+#[test]
+fn test_dont_panic_suppresses_var_not_found() {
+    // Without dont_panic this would error; with it, it should succeed silently
+    let state = run_with_state(
+        r#"
+        @x = 1
+        dont_panic {
+            sys.echo(@non_existent)
+        }
+        @x = math.add(@x, 1)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::Number(2.0)
+    );
+}
+
+#[test]
+fn test_dont_panic_allows_normal_execution() {
+    let state = run_with_state(
+        r#"
+        @result = "initial"
+        dont_panic {
+            @result = "updated"
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("result").unwrap(),
+        corvo_lang::type_system::Value::String("updated".to_string())
+    );
+}
+
+#[test]
+fn test_var_not_found_panics_outside_dont_panic() {
+    let result = run_with_state(r#"sys.echo(@non_existent)"#);
+    assert!(result.is_err());
+    assert!(format!("{}", result.unwrap_err()).contains("non_existent"));
+}
+
+#[test]
+fn test_dont_panic_suppresses_all_errors() {
+    // dont_panic catches any runtime error, not just variable-not-found
+    let state = run_with_state(
+        r#"
+        @flag = "ok"
+        dont_panic {
+            math.div(1, 0)
+            @flag = "should not reach"
+        }
+        "#,
+    )
+    .unwrap();
+    // flag stays "ok" because div-by-zero was caught before the assignment
+    assert_eq!(
+        state.var_get("flag").unwrap(),
+        corvo_lang::type_system::Value::String("ok".to_string())
+    );
+}
+
+// --- browse Block Tests ---
+
+#[test]
+fn test_browse_list_collects_values() {
+    let state = run_with_state(
+        r#"
+        @my_list = ["one", "two", "three"]
+        @last_key = 0
+        @last_val = ""
+        browse(@my_list, key, val) {
+            @last_key = @key
+            @last_val = @val
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("last_key").unwrap(),
+        corvo_lang::type_system::Value::Number(2.0)
+    );
+    assert_eq!(
+        state.var_get("last_val").unwrap(),
+        corvo_lang::type_system::Value::String("three".to_string())
+    );
+}
+
+#[test]
+fn test_browse_list_accumulates_values() {
+    let state = run_with_state(
+        r#"
+        @nums = [10, 20, 30]
+        @sum = 0
+        browse(@nums, idx, num) {
+            @sum = math.add(@sum, @num)
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("sum").unwrap(),
+        corvo_lang::type_system::Value::Number(60.0)
+    );
+}
+
+#[test]
+fn test_browse_list_key_is_numeric_index() {
+    let state = run_with_state(
+        r#"
+        @items = ["a", "b", "c"]
+        @key_sum = 0
+        browse(@items, k, v) {
+            @key_sum = math.add(@key_sum, @k)
+        }
+        "#,
+    )
+    .unwrap();
+    // indices 0 + 1 + 2 = 3
+    assert_eq!(
+        state.var_get("key_sum").unwrap(),
+        corvo_lang::type_system::Value::Number(3.0)
+    );
+}
+
+#[test]
+fn test_browse_map_key_and_value() {
+    let state = run_with_state(
+        r#"
+        @my_map = {"answer": 42}
+        @found_key = ""
+        @found_val = 0
+        browse(@my_map, prop, val) {
+            @found_key = @prop
+            @found_val = @val
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("found_key").unwrap(),
+        corvo_lang::type_system::Value::String("answer".to_string())
+    );
+    assert_eq!(
+        state.var_get("found_val").unwrap(),
+        corvo_lang::type_system::Value::Number(42.0)
+    );
+}
+
+#[test]
+fn test_browse_map_collects_all_keys() {
+    let state = run_with_state(
+        r#"
+        @m = {"a": 1, "b": 2, "c": 3}
+        @key_list = []
+        browse(@m, k, v) {
+            @key_list = list.push(@key_list, @k)
+        }
+        "#,
+    )
+    .unwrap();
+    // Map keys are iterated in sorted order, so ["a", "b", "c"]
+    let key_list = state.var_get("key_list").unwrap();
+    if let corvo_lang::type_system::Value::List(keys) = key_list {
+        let mut key_strs: Vec<String> = keys.iter().map(|v| v.to_string()).collect();
+        key_strs.sort();
+        assert_eq!(key_strs, vec!["a", "b", "c"]);
+    } else {
+        panic!("Expected a list");
+    }
+}
+
+#[test]
+fn test_browse_empty_list() {
+    let state = run_with_state(
+        r#"
+        @empty = []
+        @count = 0
+        browse(@empty, k, v) {
+            @count = math.add(@count, 1)
+        }
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("count").unwrap(),
+        corvo_lang::type_system::Value::Number(0.0)
+    );
+}
+
+#[test]
+fn test_browse_nested() {
+    let state = run_with_state(
+        r#"
+        @outer = [["a", "b"], ["c", "d"]]
+        @total = 0
+        browse(@outer, i, inner) {
+            browse(@inner, j, v) {
+                @total = math.add(@total, 1)
+            }
+        }
+        "#,
+    )
+    .unwrap();
+    // 2 outer items * 2 inner items = 4 total iterations
+    assert_eq!(
+        state.var_get("total").unwrap(),
+        corvo_lang::type_system::Value::Number(4.0)
+    );
+}
+
+#[test]
+fn test_browse_with_terminate() {
+    let state = run_with_state(
+        r#"
+        @items = [1, 2, 3, 4, 5]
+        @sum = 0
+        browse(@items, k, v) {
+            @sum = math.add(@sum, @v)
+            try {
+                assert_eq(@v, 3)
+                terminate
+            } fallback {}
+        }
+        "#,
+    )
+    .unwrap();
+    // Should sum 1+2+3=6 then terminate
+    assert_eq!(
+        state.var_get("sum").unwrap(),
+        corvo_lang::type_system::Value::Number(6.0)
+    );
+}
+
+#[test]
+fn test_browse_type_error_on_non_collection() {
+    let result = run_with_state(
+        r#"
+        @x = "not a list"
+        browse(@x, k, v) {}
+        "#,
+    );
+    assert!(result.is_err());
+}

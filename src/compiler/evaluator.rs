@@ -76,11 +76,53 @@ impl Evaluator {
                 self.terminate_requested = false;
                 Ok(())
             }
+            Stmt::Browse {
+                iterable,
+                key,
+                value,
+                body,
+            } => {
+                let collection = self.eval_expr(iterable, state)?;
+                match collection {
+                    Value::List(list) => {
+                        for (i, item) in list.iter().enumerate() {
+                            state.var_set(key.clone(), Value::Number(i as f64));
+                            state.var_set(value.clone(), item.clone());
+                            self.execute_block(body, state)?;
+                            if self.terminate_requested {
+                                break;
+                            }
+                        }
+                    }
+                    Value::Map(map) => {
+                        let mut entries: Vec<(String, Value)> = map.into_iter().collect();
+                        entries.sort_by(|a, b| a.0.cmp(&b.0));
+                        for (k, v) in entries {
+                            state.var_set(key.clone(), Value::String(k));
+                            state.var_set(value.clone(), v);
+                            self.execute_block(body, state)?;
+                            if self.terminate_requested {
+                                break;
+                            }
+                        }
+                    }
+                    _ => return Err(CorvoError::r#type("browse only works on lists and maps")),
+                }
+                self.terminate_requested = false;
+                Ok(())
+            }
             Stmt::Terminate => {
                 self.terminate_requested = true;
                 Ok(())
             }
             Stmt::Assert { kind, args } => self.eval_assertion(kind, args, state),
+            Stmt::DontPanic { body } => {
+                // Intentionally suppress all runtime errors from the block body.
+                // This includes VariableNotFound, DivisionByZero, Assertion failures,
+                // and any other execution error that would normally propagate.
+                let _ = self.execute_block(body, state);
+                Ok(())
+            }
         }
     }
 
@@ -312,8 +354,8 @@ mod tests {
 
     #[test]
     fn test_eval_static_set_and_get() {
-        let state = eval_source(r#"static.set("pi", 3.14)"#).unwrap();
-        assert_eq!(state.static_get("pi").unwrap(), Value::Number(3.14));
+        let state = eval_source(r#"static.set("pi", 2.5)"#).unwrap();
+        assert_eq!(state.static_get("pi").unwrap(), Value::Number(2.5));
     }
 
     #[test]

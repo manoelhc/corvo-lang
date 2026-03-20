@@ -319,7 +319,9 @@ impl<'a> Lexer<'a> {
                         "try" => TokenType::Try,
                         "fallback" => TokenType::Fallback,
                         "loop" => TokenType::Loop,
+                        "browse" => TokenType::Browse,
                         "terminate" => TokenType::Terminate,
+                        "dont_panic" => TokenType::DontPanic,
                         "assert_eq" => TokenType::AssertEq,
                         "assert_neq" => TokenType::AssertNeq,
                         "assert_gt" => TokenType::AssertGt,
@@ -331,6 +333,10 @@ impl<'a> Lexer<'a> {
                     };
 
                     tokens.push(Token::new(token_type, Span::new(expr_start, self.pos)));
+                }
+                '@' => {
+                    self.advance();
+                    tokens.push(Token::new(TokenType::At, Span::new(expr_start, self.pos)));
                 }
                 _ => {
                     return Err(CorvoError::lexing(format!(
@@ -388,7 +394,9 @@ impl<'a> Lexer<'a> {
             "try" => TokenType::Try,
             "fallback" => TokenType::Fallback,
             "loop" => TokenType::Loop,
+            "browse" => TokenType::Browse,
             "terminate" => TokenType::Terminate,
+            "dont_panic" => TokenType::DontPanic,
             "assert_eq" => TokenType::AssertEq,
             "assert_neq" => TokenType::AssertNeq,
             "assert_gt" => TokenType::AssertGt,
@@ -417,6 +425,8 @@ impl<'a> Lexer<'a> {
             ',' => TokenType::Comma,
             '.' => TokenType::Dot,
             ':' => TokenType::Colon,
+            '@' => TokenType::At,
+            '=' => TokenType::Equals,
             _ => TokenType::Illegal(ch.to_string()),
         };
 
@@ -715,10 +725,11 @@ mod tests {
     #[test]
     fn test_scan_all_keywords() {
         assert_token_types(
-            "fallback loop terminate assert_eq assert_neq assert_gt assert_lt assert_match",
+            "fallback loop browse terminate assert_eq assert_neq assert_gt assert_lt assert_match",
             &[
                 TokenType::Fallback,
                 TokenType::Loop,
+                TokenType::Browse,
                 TokenType::Terminate,
                 TokenType::AssertEq,
                 TokenType::AssertNeq,
@@ -841,9 +852,9 @@ mod tests {
     // --- Illegal Character Tests ---
 
     #[test]
-    fn test_scan_illegal_at_sign() {
+    fn test_scan_at_sign() {
         let tokens = tokenize("@").unwrap();
-        assert_eq!(tokens[0].token_type, TokenType::Illegal("@".to_string()));
+        assert_eq!(tokens[0].token_type, TokenType::At);
     }
 
     #[test]

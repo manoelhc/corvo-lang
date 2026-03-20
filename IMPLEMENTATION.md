@@ -8,6 +8,8 @@ When generating Corvo code, you **must** strictly adhere to the following langua
 * **STRING INTERPOLATION:** Use `${}` for string interpolation (e.g., `sys.echo("Value: ${var.get("key")}")`).
 * **NAMED PARAMETERS:** Library functions support Python-like named parameters for clarity (e.g., `http.get(url: "https://...")`).
 * **IMMUTABILITY OF METHODS:** Type methods (like `string.replace`) do not mutate the variable in place; they return a new value that must be reassigned via `var.set()`.
+* **VARIABLE SHORTHAND:** `@name` is shorthand for `var.get("name")`; `@name = value` is shorthand for `var.set("name", value)`. Only use `@` for regular runtime variables.
+* **BROWSE BINDINGS:** Inside a `browse` block, the key and value bindings are accessed with the `$` prefix (e.g., `$key`, `$value`). Never use `@` or `var.get()` to read browse-bound variables; use `$name` directly or `${$name}` inside string interpolation.
 
 ## 2. Type System & Type Methods
 Corvo is strongly and limited typed. A variable's type is inferred on its first assignment and cannot change. Type methods are called using the type namespace (e.g., `string.method(value, ...)`).
@@ -18,9 +20,13 @@ Corvo is strongly and limited typed. A variable's type is inferred on its first 
 * `string.split(target: string, delimiter: string) -> list`
 * `string.trim(target: string) -> string`
 * `string.contains(target: string, substr: string) -> boolean`
+* `string.starts_with(target: string, prefix: string) -> boolean`
+* `string.ends_with(target: string, suffix: string) -> boolean`
 * `string.to_lower(target: string) -> string`
 * `string.to_upper(target: string) -> string`
 * `string.len(target: string) -> number`
+* `string.reverse(target: string) -> string`
+* `string.is_empty(target: string) -> boolean`
 
 ### `number`
 * `number.to_string(num: number) -> string`
@@ -31,16 +37,25 @@ Corvo is strongly and limited typed. A variable's type is inferred on its first 
 * `list.push(target: list, item: any) -> list` (Returns a new list with the item appended)
 * `list.pop(target: list) -> list` (Returns a new list without the last item)
 * `list.get(target: list, index: number) -> any`
+* `list.set(target: list, index: number, value: any) -> list` (Returns a new list with the item at index replaced)
+* `list.first(target: list) -> any`
+* `list.last(target: list) -> any`
 * `list.len(target: list) -> number`
+* `list.is_empty(target: list) -> boolean`
 * `list.contains(target: list, item: any) -> boolean`
+* `list.reverse(target: list) -> list`
 * `list.join(target: list, delimiter: string) -> string`
 
 ### `map`
 * `map.keys(target: map) -> list`
 * `map.values(target: map) -> list`
+* `map.len(target: map) -> number`
+* `map.is_empty(target: map) -> boolean`
 * `map.has_key(target: map, key: string) -> boolean`
 * `map.get(target: map, key: string, default: any) -> any`
 * `map.set(target: map, key: string, value: any) -> map` (Returns a new map with the updated key)
+* `map.remove(target: map, key: string) -> map` (Returns a new map without the specified key)
+* `map.merge(target: map, other: map) -> map` (Returns a new map with keys from both maps)
 
 ## 3. State Management
 
@@ -50,6 +65,10 @@ Used for dynamic data that changes during execution.
 var.set("target_dir", "/var/www/html")
 # Type method usage
 var.set("target_dir", string.concat(var.get("target_dir"), "/public"))
+
+# @ shorthand: @name = var.get("name"), @name = val = var.set("name", val)
+@target_dir = "/var/www/html"
+sys.echo(@target_dir)
 ```
 
 ### 3.2 Compile-Time Constants (`static`)
@@ -57,6 +76,15 @@ Used for configuration and immutable values. These are encrypted and baked into 
 ```corvo
 static.set("appName", "Colonia_Agent")
 static.set("db_password", os.get_env("DB_PASS", "default_secret"))
+```
+
+### 3.3 Browse Bindings (`$`)
+Inside a `browse` block, the key and value names declared in the block header are accessed with the `$` prefix. They are block-scoped and must not be confused with regular runtime variables.
+```corvo
+browse(var.get("items"), k, v) {
+    # $k and $v are browse-bound — do NOT use @k, @v, or var.get("k")
+    sys.echo("${$k} -> ${$v}")
+}
 ```
 
 ## 4. Control Flow
@@ -74,6 +102,51 @@ Conditionals and error handling are unified. Execution proceeds linearly until a
 ### 4.2 Loops (`loop` & `terminate`)
 Corvo supports a single, infinite loop construct. The only way to exit is by calling `terminate`.
 
+### 4.3 Browse (`browse`)
+`browse` iterates over a list or map, exposing a key and value variable on each iteration. Variable names for the key and value are chosen by the caller.
+
+**Syntax:** `browse(<expr>, <key_ident>, <value_ident>) { <body> }`
+
+* For a **list**: `key` is the zero-based numeric index; `value` is the element.
+* For a **map**: `key` is the string key; `value` is the associated value. Keys are visited in sorted order.
+* Inside the block, access bindings with the `$` prefix: `$key`, `$value`. Use `${$name}` for string interpolation.
+* Pass a browse-bound value to a nested `browse` (or any function) using `$name` directly.
+* `terminate` exits the browse block early (same semantics as inside `loop`).
+* Browse blocks may be nested.
+* Using `browse` on a non-list/non-map value raises a type error.
+
+```corvo
+# List example — use $idx and $fruit to access the browse bindings
+var.set("fruits", ["apple", "banana", "cherry"])
+browse(var.get("fruits"), idx, fruit) {
+    sys.echo("${$idx}: ${$fruit}")
+}
+
+# Map example — use $key and $val
+var.set("config", {"host": "localhost", "port": 8080})
+browse(var.get("config"), key, val) {
+    sys.echo("${$key} = ${$val}")
+}
+
+# Early exit — pass $v to assert_eq, use $v in echo
+var.set("items", [1, 2, 3, 4, 5])
+browse(var.get("items"), k, v) {
+    sys.echo($v)
+    try {
+        assert_eq($v, 3)
+        terminate
+    } fallback {}
+}
+
+# Nested browse — pass $row (browse-bound) to inner browse
+@matrix = [[1, 2], [3, 4]]
+browse(@matrix, row_idx, row) {
+    browse($row, col_idx, cell) {
+        sys.echo("[${$row_idx}][${$col_idx}] = ${$cell}")
+    }
+}
+```
+
 ## 5. Comprehensive Standard Library
 
 *(Note: All libraries support the `?` operator for in-code/REPL documentation, e.g., `fs.read?`)*
@@ -83,9 +156,10 @@ Corvo supports a single, infinite loop construct. The only way to exit is by cal
 * `sys.read_line(prompt: string) -> string`: Reads user input from stdin.
 * `sys.sleep(ms: number)`: Pauses execution.
 * `sys.panic(msg: string)`: Terminates with a non-zero exit code.
+* `sys.exec(cmd: list, input?: string, check?: boolean, timeout?: number, cwd?: string, env?: map) -> map`: Executes a process directly without a shell. The first argument is a list of strings where the first element is the program and the remaining elements are its arguments (e.g., `["ls", "-la", "/tmp"]`). Returns `{"stdout": string, "stderr": string, "code": number}`. Named parameters: `input` (data piped to stdin), `check` (error on non-zero exit), `timeout` (kill after N seconds, triggers fallback on timeout), `cwd` (working directory), `env` (environment variables). Use `sys.exec` when you need direct process invocation, piping, timeouts, or environment control.
 * `os.get_env(key: string, default: string) -> string`
 * `os.set_env(key: string, value: string)`
-* `os.exec(cmd: string, args: list) -> map`: Returns `{"stdout": string, "stderr": string, "code": number}`.
+* `os.exec(cmd: string, args: list) -> map`: Simple process execution without a shell. Returns `{"stdout": string, "stderr": string, "code": number}`. Use `os.exec` for direct process invocation when you have a command and its arguments as separate values and do not need shell features.
 * `os.info() -> map`: Returns `{"os": string, "arch": string, "hostname": string}`.
 * `math.add(a: number, b: number) -> number`
 * `math.sub(a: number, b: number) -> number`

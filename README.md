@@ -6,10 +6,10 @@ Corvo is a modern scripting language designed to be a direct alternative to Bash
 
 ```corvo
 # Fetch an API, parse the response, write to disk
-let res = http.get(url: "https://api.example.com/data")
-let data = json.parse(res.response_body)
-fs.write("/tmp/output.json", json.stringify(data))
-sys.echo("Written ${map.len(data)} entries")
+var.set("res", http.get(url: "https://api.example.com/data"))
+var.set("data", json.parse(map.get(var.get("res"), "response_body")))
+fs.write("/tmp/output.json", json.stringify(var.get("data")))
+sys.echo("Written ${map.len(var.get("data"))} entries")
 ```
 
 ---
@@ -76,7 +76,7 @@ Shell scripts are interpreted. Corvo compiles to a self-contained executable wit
 cat > deploy.corvo << 'EOF'
 var.set("env", os.get_env("DEPLOY_ENV", "staging"))
 sys.echo("Deploying to ${var.get("env")}...")
-sys.exec("rsync -avz ./build/ server:/app/", check: true)
+sys.exec(["rsync", "-avz", "./build/", "server:/app/"], check: true)
 sys.echo("Done.")
 EOF
 
@@ -102,10 +102,14 @@ No `import`. No package manager. No dependency hell.
 | `yaml` | parse, stringify |
 | `csv` | parse |
 | `xml` | parse |
+| `hcl` | parse, stringify |
 | `crypto` | hash, encrypt, decrypt, uuid |
 | `dns` | resolve, lookup |
 | `math` | add, sub, mul, div, mod |
 | `os` | get_env, set_env, exec, info |
+| `ssh` | exec, scp_upload, scp_download |
+| `rsync` | sync |
+| `llm` | model, prompt, embed, chat |
 | `string` | 12 methods (concat, replace, split, trim, ...) |
 | `list` | 11 methods (push, pop, get, join, ...) |
 | `map` | 9 methods (keys, values, merge, ...) |
@@ -118,7 +122,7 @@ No `import`. No package manager. No dependency hell.
 ### Install
 
 ```bash
-git clone https://github.com/anomalyco/corvo-lang
+git clone https://github.com/KeanuReadmes/corvo-lang
 cd corvo-lang
 cargo build --release
 # Binary is at target/release/corvo
@@ -181,6 +185,41 @@ sys.echo(var.get("counter"))          # prints 1
 sys.echo(static.get("VERSION"))       # prints 1.0.0
 ```
 
+#### Variable shorthand
+
+`@name` is a shorthand for `var.get("name")`, and `@name = value` is a shorthand for `var.set("name", value)`:
+
+```corvo
+# Long form
+var.set("host", "localhost")
+sys.echo(var.get("host"))
+
+# Equivalent short form using @
+@host = "localhost"
+sys.echo(@host)
+
+# Shorthand works anywhere var.get() can appear
+sys.echo("Connecting to ${@host}:${@port}")
+http.get(url: @host)
+```
+
+Inside a `browse` block, the key and value bindings are accessed with the `$` prefix instead of `@`, because they are block-scoped and not regular runtime variables:
+
+```corvo
+var.set("items", ["a", "b", "c"])
+
+browse(var.get("items"), idx, item) {
+    # $idx and $item are the browse-bound bindings — use $ not @
+    sys.echo("${$idx}: ${$item}")
+}
+```
+
+| Shorthand | Equivalent | Scope |
+|---|---|---|
+| `@name` | `var.get("name")` | runtime variable |
+| `@name = val` | `var.set("name", val)` | runtime variable |
+| `$name` | browse-bound variable | inside `browse` block only |
+
 ### String interpolation
 
 Expressions inside `${...}`:
@@ -216,6 +255,59 @@ loop {
 sys.echo("Sum of 1..10 = ${var.get("sum")}")
 ```
 
+### Browse
+
+`browse` iterates over a list or map, binding a key and value variable for each element. Inside the block, those bindings are accessed with the `$` prefix:
+
+```corvo
+# Iterating a list — $idx is the zero-based index, $fruit is the element
+var.set("fruits", ["apple", "banana", "cherry"])
+
+browse(var.get("fruits"), idx, fruit) {
+    sys.echo("${$idx}: ${$fruit}")
+}
+# 0: apple
+# 1: banana
+# 2: cherry
+```
+
+```corvo
+# Iterating a map — $key is the string key, $val is the associated value
+var.set("config", {"host": "localhost", "port": 8080})
+
+browse(var.get("config"), key, val) {
+    sys.echo("${$key} = ${$val}")
+}
+# host = localhost
+# port = 8080
+```
+
+```corvo
+# Using the @ shorthand to pass a regular variable as the iterable
+@scores = {"alice": 95, "bob": 87, "carol": 92}
+
+browse(@scores, name, score) {
+    sys.echo("${$name}: ${$score}")
+}
+```
+
+Browse blocks can be nested and support `terminate` to exit early. Pass a browse-bound value to a nested browse using `$name`:
+
+```corvo
+@matrix = [[1, 2], [3, 4]]
+
+browse(@matrix, row_idx, row) {
+    browse($row, col_idx, cell) {
+        sys.echo("[${$row_idx}][${$col_idx}] = ${$cell}")
+    }
+}
+```
+
+| Iterable type | `key` binding | `value` binding |
+|---|---|---|
+| `list` | numeric index (0, 1, 2, …) | element value |
+| `map` | string key | associated value |
+
 ### Assertions
 
 Trigger fallback on failure:
@@ -226,7 +318,7 @@ Trigger fallback on failure:
 | `assert_neq(a, b)` | a != b |
 | `assert_gt(a, b)` | a > b |
 | `assert_lt(a, b)` | a < b |
-| `assert_match(regex, str)` | str matches regex pattern |
+| `assert_match(regex, target)` | target matches regex pattern |
 
 ```corvo
 try {
@@ -257,32 +349,34 @@ sys.echo(json.stringify(var.get("config")))
 
 ### Subprocess execution
 
-Inspired by Python's `subprocess.run`:
+Inspired by Python's `subprocess.run`, `sys.exec` accepts a list of strings where the first element is the program and the remaining elements are its arguments. This avoids shell injection and makes argument passing explicit:
 
 ```corvo
 # Basic command execution
-var.set("result", sys.exec("ls -la /tmp"))
-sys.echo(var.get("result").stdout)
+var.set("result", sys.exec(["ls", "-la", "/tmp"]))
+sys.echo(map.get(var.get("result"), "stdout"))
 
 # With input piped to stdin
-var.set("upper", sys.exec("tr '[:lower:]' '[:upper:]'", input: "hello world"))
-sys.echo(upper.stdout)  # "HELLO WORLD"
+var.set("upper", sys.exec(["tr", "[:lower:]", "[:upper:]"], input: "hello world"))
+sys.echo(map.get(var.get("upper"), "stdout"))  # "HELLO WORLD"
 
 # With working directory and environment
-sys.exec("make build", cwd: "/src/project", env: {"CC": "clang"})
+sys.exec(["make", "build"], cwd: "/src/project", env: {"CC": "clang"})
 
-# Timeout protection
+# Timeout protection: timeout causes a runtime error that triggers fallback
 try {
-    sys.exec("slow-command", timeout: 30)
+    var.set("result", sys.exec(["slow-command"], timeout: 30))
+    assert_eq(map.get(var.get("result"), "code"), 0)
+    sys.echo("Command succeeded")
 } fallback {
     sys.echo("Command timed out or failed")
 }
 
 # Strict mode: error on non-zero exit
-sys.exec("deploy.sh", check: true)
+sys.exec(["deploy.sh"], check: true)
 
-# Custom shell
-sys.exec("echo $PS1", shell: "bash")
+# When shell features like pipelines are needed, pass them via sh -c
+var.set("result", sys.exec(["sh", "-c", "df -h / | tail -1"]))
 ```
 
 | Named arg | Type | Description |
@@ -292,7 +386,6 @@ sys.exec("echo $PS1", shell: "bash")
 | `timeout` | number | Kill after N seconds |
 | `cwd` | string | Working directory |
 | `env` | map | Environment variables |
-| `shell` | string | Shell to use (default: `sh`) |
 
 Returns: `{stdout: "...", stderr: "...", code: 0}`
 
@@ -323,7 +416,7 @@ http.post("https://api.example.com", body: '{"key": "val"}', headers: {"Content-
 | `sys.read_line(prompt?)` | Read a line from stdin |
 | `sys.sleep(ms)` | Pause for milliseconds |
 | `sys.panic(msg?)` | Raise a runtime error |
-| `sys.exec(cmd, ...)` | Execute a shell command |
+| `sys.exec(cmd, ...)` | Execute a process from a list of strings |
 
 ### `fs` -- File system
 
@@ -365,19 +458,21 @@ All return `{status_code, response_body, headers}`.
 | `yaml.parse(str)` | Parse YAML string |
 | `yaml.stringify(value)` | Serialize to YAML |
 
-### `csv` / `xml` -- Data formats
+### `csv` / `xml` / `hcl` -- Data formats
 
 | Function | Description |
 |---|---|
 | `csv.parse(str, delimiter?)` | Parse CSV with headers |
 | `xml.parse(str)` | Parse XML to Corvo value |
+| `hcl.parse(str)` | Parse HCL/Terraform config to Corvo value |
+| `hcl.stringify(value)` | Serialize to HCL |
 
 ### `crypto` -- Cryptography
 
 | Function | Description |
 |---|---|
 | `crypto.hash(algorithm, data)` | Hash: `md5`, `sha256`, `sha512` |
-| `crypto.encrypt(data, key)` | Encrypt (XOR + base64) |
+| `crypto.encrypt(data, key)` | Encrypt (AES-GCM) |
 | `crypto.decrypt(data, key)` | Decrypt |
 | `crypto.uuid()` | Generate UUID v4 |
 
@@ -404,8 +499,31 @@ All return `{status_code, response_body, headers}`.
 |---|---|
 | `os.get_env(key, default?)` | Get environment variable |
 | `os.set_env(key, value)` | Set environment variable |
-| `os.exec(cmd)` | Simple command execution |
+| `os.exec(cmd, args?)` | Simple process execution |
 | `os.info()` | Returns `{os, arch, hostname}` |
+
+### `ssh` -- Remote shell
+
+| Function | Description |
+|---|---|
+| `ssh.exec(host, user, key_path, cmd)` | Execute command on remote host |
+| `ssh.scp_upload(host, user, key_path, local_path, remote_path)` | Upload file via SCP |
+| `ssh.scp_download(host, user, key_path, remote_path, local_path)` | Download file via SCP |
+
+### `rsync` -- File synchronization
+
+| Function | Description |
+|---|---|
+| `rsync.sync(source, dest, options?)` | Synchronize files/directories |
+
+### `llm` -- AI language models
+
+| Function | Description |
+|---|---|
+| `llm.model(name, provider, options?)` | Build a model connection string |
+| `llm.prompt(model, prompt, tokens?)` | Execute a prompt against a model |
+| `llm.embed(model, text)` | Generate a vector embedding |
+| `llm.chat(id, model, messages, tokens?)` | Execute a chat conversation |
 
 ### `string` methods
 
@@ -504,15 +622,41 @@ sys.echo("Found ${var.get("count")} error lines")
 var.set("res", http.get(url: "https://api.github.com/repos/rust-lang/rust"))
 
 try {
-    assert_eq(var.get("res").status_code, 200)
+    assert_eq(map.get(var.get("res"), "status_code"), 200)
 } fallback {
     sys.panic("API request failed")
 }
 
-var.set("repo", json.parse(var.get("res").response_body))
+var.set("repo", json.parse(map.get(var.get("res"), "response_body")))
 sys.echo("Name: ${map.get(var.get("repo"), "full_name")}")
 sys.echo("Stars: ${map.get(var.get("repo"), "stargazers_count")}")
 sys.echo("Language: ${map.get(var.get("repo"), "language")}")
+```
+
+### Iterating over a collection with browse
+
+```corvo
+# Print every field of a JSON object
+var.set("user", json.parse(fs.read("user.json")))
+
+browse(var.get("user"), field, value) {
+    sys.echo("${$field}: ${$value}")
+}
+
+# Count errors in a log file
+var.set("lines", string.split(fs.read("access.log"), "\n"))
+var.set("count", 0)
+
+browse(var.get("lines"), idx, line) {
+    try {
+        assert_match("ERROR", $line)
+        var.set("count", math.add(var.get("count"), 1))
+    } fallback {
+        # not an error line, skip
+    }
+}
+
+sys.echo("Found ${var.get("count")} error lines")
 ```
 
 ### System health check
@@ -522,15 +666,15 @@ var.set("info", os.info())
 sys.echo("Host: ${map.get(var.get("info"), "hostname")}")
 sys.echo("OS: ${map.get(var.get("info"), "os")}/${map.get(var.get("info"), "arch")}")
 
-var.set("disk", sys.exec("df -h / | tail -1"))
-sys.echo("Disk: ${string.trim(var.get("disk").stdout)}")
+var.set("disk", sys.exec(["sh", "-c", "df -h / | tail -1"]))
+sys.echo("Disk: ${string.trim(map.get(var.get("disk"), "stdout"))}")
 
-var.set("mem", sys.exec("free -h | grep Mem | awk '{print $3 \"/\" $2}'"))
-sys.echo("Memory: ${string.trim(var.get("mem").stdout)}")
+var.set("mem", sys.exec(["sh", "-c", "free -h | grep Mem | awk '{print $3 \"/\" $2}'"]))
+sys.echo("Memory: ${string.trim(map.get(var.get("mem"), "stdout"))}")
 
-var.set("result", sys.exec("curl -s -o /dev/null -w '%{http_code}' https://example.com", timeout: 5)
+var.set("result", sys.exec(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "https://example.com"], timeout: 5))
 try {
-    assert_eq(var.get("result").stdout, "200")
+    assert_eq(map.get(var.get("result"), "stdout"), "200")
     sys.echo("Health: OK")
 } fallback {
     sys.echo("Health: DEGRADED")
@@ -545,7 +689,7 @@ static.set("DEST", "backup-server:/data/important")
 
 try {
     sys.exec(
-        "rsync -avz --delete ${static.get("SRC")}/ ${static.get("DEST")}/",
+        ["rsync", "-avz", "--delete", "${static.get("SRC")}/", "${static.get("DEST")}/"],
         timeout: 300,
         check: true
     )

@@ -76,6 +76,45 @@ impl Evaluator {
                 self.terminate_requested = false;
                 Ok(())
             }
+            Stmt::Browse {
+                iterable,
+                key,
+                value,
+                body,
+            } => {
+                let collection = self.eval_expr(iterable, state)?;
+                match collection {
+                    Value::List(list) => {
+                        for (i, item) in list.iter().enumerate() {
+                            state.var_set(key.clone(), Value::Number(i as f64));
+                            state.var_set(value.clone(), item.clone());
+                            self.execute_block(body, state)?;
+                            if self.terminate_requested {
+                                break;
+                            }
+                        }
+                    }
+                    Value::Map(map) => {
+                        let mut entries: Vec<(String, Value)> = map.into_iter().collect();
+                        entries.sort_by(|a, b| a.0.cmp(&b.0));
+                        for (k, v) in entries {
+                            state.var_set(key.clone(), Value::String(k));
+                            state.var_set(value.clone(), v);
+                            self.execute_block(body, state)?;
+                            if self.terminate_requested {
+                                break;
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(CorvoError::r#type(
+                            "browse only works on lists and maps",
+                        ))
+                    }
+                }
+                self.terminate_requested = false;
+                Ok(())
+            }
             Stmt::Terminate => {
                 self.terminate_requested = true;
                 Ok(())

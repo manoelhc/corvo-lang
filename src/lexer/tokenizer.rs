@@ -319,6 +319,7 @@ impl<'a> Lexer<'a> {
                         "try" => TokenType::Try,
                         "fallback" => TokenType::Fallback,
                         "loop" => TokenType::Loop,
+                        "browse" => TokenType::Browse,
                         "terminate" => TokenType::Terminate,
                         "dont_panic" => TokenType::DontPanic,
                         "assert_eq" => TokenType::AssertEq,
@@ -393,6 +394,7 @@ impl<'a> Lexer<'a> {
             "try" => TokenType::Try,
             "fallback" => TokenType::Fallback,
             "loop" => TokenType::Loop,
+            "browse" => TokenType::Browse,
             "terminate" => TokenType::Terminate,
             "dont_panic" => TokenType::DontPanic,
             "assert_eq" => TokenType::AssertEq,
@@ -723,10 +725,11 @@ mod tests {
     #[test]
     fn test_scan_all_keywords() {
         assert_token_types(
-            "fallback loop terminate assert_eq assert_neq assert_gt assert_lt assert_match",
+            "fallback loop browse terminate assert_eq assert_neq assert_gt assert_lt assert_match",
             &[
                 TokenType::Fallback,
                 TokenType::Loop,
+                TokenType::Browse,
                 TokenType::Terminate,
                 TokenType::AssertEq,
                 TokenType::AssertNeq,

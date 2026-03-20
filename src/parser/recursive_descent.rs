@@ -37,6 +37,7 @@ impl Parser {
             TokenType::Var => self.parse_var_set()?,
             TokenType::Try => self.parse_try_block()?,
             TokenType::Loop => self.parse_loop()?,
+            TokenType::Browse => self.parse_browse()?,
             TokenType::Terminate => self.parse_terminate()?,
             TokenType::DontPanic => self.parse_dont_panic()?,
             TokenType::AssertEq
@@ -134,6 +135,41 @@ impl Parser {
         let body = self.parse_block_body("loop block")?;
 
         Ok(Stmt::Loop { body })
+    }
+
+    fn parse_browse(&mut self) -> CorvoResult<Stmt> {
+        self.advance(); // consume 'browse'
+        self.consume(TokenType::LeftParen, "Expected '(' after 'browse'")?;
+
+        let iterable = self.parse_expression()?;
+
+        self.consume(TokenType::Comma, "Expected ',' after iterable")?;
+
+        let key = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected identifier for key variable name")),
+        };
+        self.advance(); // consume key identifier
+
+        self.consume(TokenType::Comma, "Expected ',' after key name")?;
+
+        let value = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected identifier for value variable name")),
+        };
+        self.advance(); // consume value identifier
+
+        self.consume(TokenType::RightParen, "Expected ')' after value name")?;
+        self.consume(TokenType::LeftBrace, "Expected '{' after ')'")?;
+
+        let body = self.parse_block_body("browse block")?;
+
+        Ok(Stmt::Browse {
+            iterable,
+            key,
+            value,
+            body,
+        })
     }
 
     fn parse_terminate(&mut self) -> CorvoResult<Stmt> {
@@ -782,6 +818,50 @@ mod tests {
                 assert_eq!(body.len(), 3);
             }
             _ => panic!("Expected Loop"),
+        }
+    }
+
+    #[test]
+    fn test_parse_browse_list() {
+        let program = parse_source(
+            r#"
+            browse(var.get("items"), key, val) {
+                sys.echo("hello")
+            }
+            "#,
+        )
+        .unwrap();
+        match &program.statements[0] {
+            Stmt::Browse {
+                key, value, body, ..
+            } => {
+                assert_eq!(key, "key");
+                assert_eq!(value, "val");
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected Browse"),
+        }
+    }
+
+    #[test]
+    fn test_parse_browse_with_at_var() {
+        let program = parse_source(
+            r#"
+            browse(@my_list, k, v) {
+                sys.echo(@v)
+            }
+            "#,
+        )
+        .unwrap();
+        match &program.statements[0] {
+            Stmt::Browse {
+                key, value, body, ..
+            } => {
+                assert_eq!(key, "k");
+                assert_eq!(value, "v");
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected Browse"),
         }
     }
 

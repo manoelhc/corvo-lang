@@ -29,6 +29,10 @@ static.set("version", os.get_env("CORVO_VERSION", "1.0.0")) # Compile-time const
 var.set("greeting", "Hello, Corvo!")
 sys.echo(var.get("greeting", "Bye, Corvo!"))
 
+# @ shorthand: @name reads a variable (var.get), @name = val writes it (var.set)
+@greeting = "Hello, shorthand!"
+sys.echo(@greeting)
+
 # Static variable assignment
 static.set("pi", 3.14159)
 sys.echo(static.get("pi"))
@@ -55,6 +59,27 @@ loop {
         sys.echo("You entered: ${var.get("input")}")
     }
 }
+
+# Browse block — iterate over a list or map.
+# For a list: key is the zero-based index, value is the element.
+# For a map:  key is the string key, value is the associated value.
+# Inside the block, use the $ prefix to access browse-bound names.
+var.set("fruits", ["apple", "banana", "cherry"])
+browse(var.get("fruits"), idx, fruit) {
+    sys.echo("${$idx}: ${$fruit}")
+}
+# Prints:
+# 0: apple
+# 1: banana
+# 2: cherry
+
+var.set("config", {"host": "localhost", "port": 8080})
+browse(var.get("config"), key, val) {
+    sys.echo("${$key} = ${$val}")
+}
+# Prints:
+# host = localhost
+# port = 8080
 ```
 In this example, we demonstrate various features of Corvo, including variable assignment, static variables, and the try/fallback mechanism. The code is designed to be easy to read and understand, making it accessible for both beginners and experienced programmers.    
 

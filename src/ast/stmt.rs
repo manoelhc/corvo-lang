@@ -25,6 +25,12 @@ pub enum Stmt {
     Loop {
         body: Vec<Stmt>,
     },
+    Browse {
+        iterable: Expr,
+        key: String,
+        value: String,
+        body: Vec<Stmt>,
+    },
     Terminate,
     Assert {
         kind: AssertKind,

@@ -116,7 +116,7 @@ corvo-lang/
 
 ### 2.1 Token Types (`src/lexer/token.rs`)
 - [x] Define `TokenType` enum:
-  - Keywords: `static`, `var`, `try`, `fallback`, `loop`, `terminate`, `assert_eq`, `assert_neq`, `assert_gt`, `assert_lt`, `assert_match`
+  - Keywords: `static`, `var`, `try`, `fallback`, `loop`, `browse`, `terminate`, `assert_eq`, `assert_neq`, `assert_gt`, `assert_lt`, `assert_match`
   - Operators: `{`, `}`, `(`, `)`, `[`, `]`, `,`, `.`, `:`
   - Literals: `String`, `Number`, `Boolean`, `Identifier`
   - Special: `StringInterpolation`
@@ -167,6 +167,7 @@ corvo-lang/
   - `ExprStmt { expr: Expr }`
   - `TryBlock { body: Vec<Stmt>, fallbacks: Vec<FallbackBlock> }`
   - `Loop { body: Vec<Stmt> }`
+  - `Browse { iterable: Expr, key: String, value: String, body: Vec<Stmt> }`
   - `Terminate`
   - `Assert { kind: AssertKind, args: Vec<Expr> }`
 
@@ -185,6 +186,7 @@ corvo-lang/
 - [x] Implement `parse_expression() -> Expr` with `parse_postfix()` for index access
 - [x] Parse try/fallback blocks (including multiple fallbacks, nested)
 - [x] Parse loop blocks
+- [x] Parse browse blocks (`browse(expr, key, value) { body }`)
 - [x] Parse named parameters (mixed positional + named)
 - [x] Parse string interpolation
 - [x] Parse list literals `[1, 2, 3]`
@@ -357,7 +359,8 @@ corvo-lang/
 - [x] Handle var assignment
 - [x] Implement try/fallback logic (multiple fallbacks, nested)
 - [x] Implement loop execution (with error recovery)
-- [x] Implement terminate (breaks loop + program)
+- [x] Implement browse execution (iterate list by index, map by sorted key)
+- [x] Implement terminate (breaks loop/browse + program)
 - [x] Implement assertions
 
 ### 8.3 Built-in Assertions - 48 evaluator tests (up from 21)
@@ -421,13 +424,14 @@ corvo-lang/
 - [x] Error tests (2 tests)
 - [x] Span tests (3 tests)
 
-### 11.2 Integration Tests - 32 tests (`tests/integration_test.rs`)
+### 11.2 Integration Tests - 50 tests (`tests/integration_test.rs`)
 - [x] End-to-end programs (hello, arithmetic, strings, lists, maps)
 - [x] try/fallback scenarios (success, failure, multiple fallbacks)
 - [x] Error handling (parse, runtime, assertion errors)
 - [x] Computation tests (factorial, fibonacci, accumulator)
 - [x] Standard library integration (json, crypto, fs, os)
 - [x] API tests (run_source, run_source_with_state)
+- [x] browse block tests (list, map, empty, nested, terminate, type error)
 
 ### 11.3 Example Programs - 6 files in `examples/`
 - [x] `hello.corvo` - Hello World

@@ -185,6 +185,41 @@ sys.echo(var.get("counter"))          # prints 1
 sys.echo(static.get("VERSION"))       # prints 1.0.0
 ```
 
+#### Variable shorthand
+
+`@name` is a shorthand for `var.get("name")`, and `@name = value` is a shorthand for `var.set("name", value)`:
+
+```corvo
+# Long form
+var.set("host", "localhost")
+sys.echo(var.get("host"))
+
+# Equivalent short form using @
+@host = "localhost"
+sys.echo(@host)
+
+# Shorthand works anywhere var.get() can appear
+sys.echo("Connecting to ${@host}:${@port}")
+http.get(url: @host)
+```
+
+Inside a `browse` block, the key and value bindings are accessed with the `$` prefix instead of `@`, because they are block-scoped and not regular runtime variables:
+
+```corvo
+var.set("items", ["a", "b", "c"])
+
+browse(var.get("items"), idx, item) {
+    # $idx and $item are the browse-bound bindings — use $ not @
+    sys.echo("${$idx}: ${$item}")
+}
+```
+
+| Shorthand | Equivalent | Scope |
+|---|---|---|
+| `@name` | `var.get("name")` | runtime variable |
+| `@name = val` | `var.set("name", val)` | runtime variable |
+| `$name` | browse-bound variable | inside `browse` block only |
+
 ### String interpolation
 
 Expressions inside `${...}`:
@@ -219,6 +254,59 @@ loop {
 
 sys.echo("Sum of 1..10 = ${var.get("sum")}")
 ```
+
+### Browse
+
+`browse` iterates over a list or map, binding a key and value variable for each element. Inside the block, those bindings are accessed with the `$` prefix:
+
+```corvo
+# Iterating a list — $idx is the zero-based index, $fruit is the element
+var.set("fruits", ["apple", "banana", "cherry"])
+
+browse(var.get("fruits"), idx, fruit) {
+    sys.echo("${$idx}: ${$fruit}")
+}
+# 0: apple
+# 1: banana
+# 2: cherry
+```
+
+```corvo
+# Iterating a map — $key is the string key, $val is the associated value
+var.set("config", {"host": "localhost", "port": 8080})
+
+browse(var.get("config"), key, val) {
+    sys.echo("${$key} = ${$val}")
+}
+# host = localhost
+# port = 8080
+```
+
+```corvo
+# Using the @ shorthand to pass a regular variable as the iterable
+@scores = {"alice": 95, "bob": 87, "carol": 92}
+
+browse(@scores, name, score) {
+    sys.echo("${$name}: ${$score}")
+}
+```
+
+Browse blocks can be nested and support `terminate` to exit early. Pass a browse-bound value to a nested browse using `$name`:
+
+```corvo
+@matrix = [[1, 2], [3, 4]]
+
+browse(@matrix, row_idx, row) {
+    browse($row, col_idx, cell) {
+        sys.echo("[${$row_idx}][${$col_idx}] = ${$cell}")
+    }
+}
+```
+
+| Iterable type | `key` binding | `value` binding |
+|---|---|---|
+| `list` | numeric index (0, 1, 2, …) | element value |
+| `map` | string key | associated value |
 
 ### Assertions
 
@@ -543,6 +631,32 @@ var.set("repo", json.parse(map.get(var.get("res"), "response_body")))
 sys.echo("Name: ${map.get(var.get("repo"), "full_name")}")
 sys.echo("Stars: ${map.get(var.get("repo"), "stargazers_count")}")
 sys.echo("Language: ${map.get(var.get("repo"), "language")}")
+```
+
+### Iterating over a collection with browse
+
+```corvo
+# Print every field of a JSON object
+var.set("user", json.parse(fs.read("user.json")))
+
+browse(var.get("user"), field, value) {
+    sys.echo("${$field}: ${$value}")
+}
+
+# Count errors in a log file
+var.set("lines", string.split(fs.read("access.log"), "\n"))
+var.set("count", 0)
+
+browse(var.get("lines"), idx, line) {
+    try {
+        assert_match("ERROR", $line)
+        var.set("count", math.add(var.get("count"), 1))
+    } fallback {
+        # not an error line, skip
+    }
+}
+
+sys.echo("Found ${var.get("count")} error lines")
 ```
 
 ### System health check

@@ -87,6 +87,41 @@ Conditionals and error handling are unified. Execution proceeds linearly until a
 ### 4.2 Loops (`loop` & `terminate`)
 Corvo supports a single, infinite loop construct. The only way to exit is by calling `terminate`.
 
+### 4.3 Browse (`browse`)
+`browse` iterates over a list or map, exposing a key and value variable on each iteration. Variable names for the key and value are chosen by the caller.
+
+**Syntax:** `browse(<expr>, <key_ident>, <value_ident>) { <body> }`
+
+* For a **list**: `key` is the zero-based numeric index; `value` is the element.
+* For a **map**: `key` is the string key; `value` is the associated value. Keys are visited in sorted order.
+* `terminate` exits the browse block early (same semantics as inside `loop`).
+* Browse blocks may be nested.
+* Using `browse` on a non-list/non-map value raises a type error.
+
+```corvo
+# List example
+var.set("fruits", ["apple", "banana", "cherry"])
+browse(var.get("fruits"), idx, fruit) {
+    sys.echo("${idx}: ${var.get("fruit")}")
+}
+
+# Map example
+var.set("config", {"host": "localhost", "port": 8080})
+browse(var.get("config"), key, val) {
+    sys.echo("${key} = ${var.get("val")}")
+}
+
+# Early exit
+var.set("items", [1, 2, 3, 4, 5])
+browse(var.get("items"), k, v) {
+    sys.echo(var.get("v"))
+    try {
+        assert_eq(var.get("v"), 3)
+        terminate
+    } fallback {}
+}
+```
+
 ## 5. Comprehensive Standard Library
 
 *(Note: All libraries support the `?` operator for in-code/REPL documentation, e.g., `fs.read?`)*

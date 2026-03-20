@@ -220,6 +220,59 @@ loop {
 sys.echo("Sum of 1..10 = ${var.get("sum")}")
 ```
 
+### Browse
+
+`browse` iterates over a list or map, binding a key and value variable for each element:
+
+```corvo
+# Iterating a list — key is the zero-based index, value is the element
+var.set("fruits", ["apple", "banana", "cherry"])
+
+browse(var.get("fruits"), idx, fruit) {
+    sys.echo("${idx}: ${var.get("fruit")}")
+}
+# 0: apple
+# 1: banana
+# 2: cherry
+```
+
+```corvo
+# Iterating a map — key is the string key, value is the associated value
+var.set("config", {"host": "localhost", "port": 8080})
+
+browse(var.get("config"), key, val) {
+    sys.echo("${key} = ${var.get("val")}")
+}
+# host = localhost
+# port = 8080
+```
+
+```corvo
+# Short-hand with @ variables
+@scores = {"alice": 95, "bob": 87, "carol": 92}
+
+browse(@scores, name, score) {
+    sys.echo("${@name}: ${@score}")
+}
+```
+
+Browse blocks can be nested and support `terminate` to exit early:
+
+```corvo
+@matrix = [[1, 2], [3, 4]]
+
+browse(@matrix, row_idx, row) {
+    browse(@row, col_idx, cell) {
+        sys.echo("[${@row_idx}][${@col_idx}] = ${@cell}")
+    }
+}
+```
+
+| Iterable type | `key` binding | `value` binding |
+|---|---|---|
+| `list` | numeric index (0, 1, 2, …) | element value |
+| `map` | string key | associated value |
+
 ### Assertions
 
 Trigger fallback on failure:
@@ -543,6 +596,32 @@ var.set("repo", json.parse(map.get(var.get("res"), "response_body")))
 sys.echo("Name: ${map.get(var.get("repo"), "full_name")}")
 sys.echo("Stars: ${map.get(var.get("repo"), "stargazers_count")}")
 sys.echo("Language: ${map.get(var.get("repo"), "language")}")
+```
+
+### Iterating over a collection with browse
+
+```corvo
+# Print every field of a JSON object
+var.set("user", json.parse(fs.read("user.json")))
+
+browse(var.get("user"), field, value) {
+    sys.echo("${field}: ${var.get("value")}")
+}
+
+# Count errors in a log file
+var.set("lines", string.split(fs.read("access.log"), "\n"))
+var.set("count", 0)
+
+browse(var.get("lines"), idx, line) {
+    try {
+        assert_match("ERROR", var.get("line"))
+        var.set("count", math.add(var.get("count"), 1))
+    } fallback {
+        # not an error line, skip
+    }
+}
+
+sys.echo("Found ${var.get("count")} error lines")
 ```
 
 ### System health check

@@ -55,6 +55,26 @@ loop {
         sys.echo("You entered: ${var.get("input")}")
     }
 }
+
+# Browse block — iterate over a list or map.
+# For a list: key is the zero-based index, value is the element.
+# For a map:  key is the string key, value is the associated value.
+var.set("fruits", ["apple", "banana", "cherry"])
+browse(var.get("fruits"), idx, fruit) {
+    sys.echo("${idx}: ${var.get("fruit")}")
+}
+# Prints:
+# 0: apple
+# 1: banana
+# 2: cherry
+
+var.set("config", {"host": "localhost", "port": 8080})
+browse(var.get("config"), key, val) {
+    sys.echo("${key} = ${var.get("val")}")
+}
+# Prints:
+# host = localhost
+# port = 8080
 ```
 In this example, we demonstrate various features of Corvo, including variable assignment, static variables, and the try/fallback mechanism. The code is designed to be easy to read and understand, making it accessible for both beginners and experienced programmers.    
 

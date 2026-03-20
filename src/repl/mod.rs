@@ -281,10 +281,10 @@ mod tests {
     #[test]
     fn test_repl_static_vars() {
         let mut repl = Repl::new();
-        repl.execute(r#"static.set("PI", 3.14)"#);
+        repl.execute(r#"static.set("PI", 2.5)"#);
         assert_eq!(
             repl.state.static_get("PI").unwrap(),
-            crate::type_system::Value::Number(3.14)
+            crate::type_system::Value::Number(2.5)
         );
     }
 

@@ -337,9 +337,9 @@ mod tests {
 
     #[test]
     fn test_number_parse() {
-        let args = vec![Value::Number(0.0), Value::String("3.14".to_string())];
+        let args = vec![Value::Number(0.0), Value::String("1.5".to_string())];
         let result = call_number_method("number.parse", &args).unwrap();
-        assert_eq!(result, Value::Number(3.14));
+        assert_eq!(result, Value::Number(1.5));
     }
 
     #[test]

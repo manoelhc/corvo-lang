@@ -106,11 +106,7 @@ impl Evaluator {
                             }
                         }
                     }
-                    _ => {
-                        return Err(CorvoError::r#type(
-                            "browse only works on lists and maps",
-                        ))
-                    }
+                    _ => return Err(CorvoError::r#type("browse only works on lists and maps")),
                 }
                 self.terminate_requested = false;
                 Ok(())
@@ -358,8 +354,8 @@ mod tests {
 
     #[test]
     fn test_eval_static_set_and_get() {
-        let state = eval_source(r#"static.set("pi", 3.14)"#).unwrap();
-        assert_eq!(state.static_get("pi").unwrap(), Value::Number(3.14));
+        let state = eval_source(r#"static.set("pi", 2.5)"#).unwrap();
+        assert_eq!(state.static_get("pi").unwrap(), Value::Number(2.5));
     }
 
     #[test]

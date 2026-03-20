@@ -187,8 +187,11 @@ mod tests {
     #[test]
     fn test_static_set_get() {
         let mut state = RuntimeState::new();
-        state.static_set("PI".to_string(), Value::Number(3.14));
-        assert_eq!(state.static_get("PI").unwrap(), Value::Number(3.14));
+        state.static_set("PI".to_string(), Value::Number(std::f64::consts::PI));
+        assert_eq!(
+            state.static_get("PI").unwrap(),
+            Value::Number(std::f64::consts::PI)
+        );
     }
 
     #[test]

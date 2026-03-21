@@ -144,6 +144,48 @@ fn test_map_operations() {
 }
 
 #[test]
+fn test_list_new() {
+    let state = run_with_state(
+        r#"
+        var.set("items", list.new())
+        var.set("empty_check", list.is_empty(var.get("items")))
+        var.set("items", list.push(var.get("items"), "first"))
+        var.set("count", list.len(var.get("items")))
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("empty_check").unwrap(),
+        corvo_lang::type_system::Value::Boolean(true)
+    );
+    assert_eq!(
+        state.var_get("count").unwrap(),
+        corvo_lang::type_system::Value::Number(1.0)
+    );
+}
+
+#[test]
+fn test_map_new() {
+    let state = run_with_state(
+        r#"
+        var.set("data", map.new())
+        var.set("empty_check", map.is_empty(var.get("data")))
+        var.set("data", map.set(var.get("data"), "key", "value"))
+        var.set("count", map.len(var.get("data")))
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("empty_check").unwrap(),
+        corvo_lang::type_system::Value::Boolean(true)
+    );
+    assert_eq!(
+        state.var_get("count").unwrap(),
+        corvo_lang::type_system::Value::Number(1.0)
+    );
+}
+
+#[test]
 fn test_try_fallback_scenarios() {
     // Success case - no fallback
     let state = run_with_state(

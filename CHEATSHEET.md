@@ -224,6 +224,7 @@ Functions are grouped by module. Parameter names in `[brackets]` are optional.
 
 | Function | Parameters | Returns | Description |
 |---|---|---|---|
+| `list.new` | _(none)_ | `list` | Create a new empty list |
 | `list.push` | `l: list, item: any` | `list` | Return a new list with `item` appended |
 | `list.pop` | `l: list` | `list` | Return a new list with the last item removed |
 | `list.get` | `l: list, index: number` | `any` | Get item at `index` (0-based) |
@@ -246,6 +247,7 @@ Functions are grouped by module. Parameter names in `[brackets]` are optional.
 |---|---|---|---|
 | `map.get` | `m: map, key: string, [default: any]` | `any` | Get value for `key` (optional default) |
 | `map.set` | `m: map, key: string, value: any` | `map` | Return a new map with `key` set to `value` |
+| `map.new` | _(none)_ | `map` | Create a new empty map |
 | `map.remove` | `m: map, key: string` | `map` | Return a new map without `key` |
 | `map.has_key` | `m: map, key: string` | `bool` | Check if `key` exists |
 | `map.keys` | `m: map` | `list[string]` | Return all keys as a list |

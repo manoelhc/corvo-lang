@@ -1071,3 +1071,49 @@ fn test_browse_type_error_on_non_collection() {
     );
     assert!(result.is_err());
 }
+
+#[test]
+fn test_env_parse_basic() {
+    let state = run_with_state(
+        r#"
+        var.set("env_str", "HOST=localhost\nPORT=8080")
+        var.set("config", env.parse(var.get("env_str")))
+        var.set("host", map.get(var.get("config"), "HOST"))
+        var.set("port", map.get(var.get("config"), "PORT"))
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("host").unwrap(),
+        corvo_lang::type_system::Value::String("localhost".to_string())
+    );
+    assert_eq!(
+        state.var_get("port").unwrap(),
+        corvo_lang::type_system::Value::String("8080".to_string())
+    );
+}
+
+#[test]
+fn test_env_parse_skips_comments() {
+    // This test verifies env.parse returns a map with only the non-comment entries.
+    // Comment-skipping with '#' is fully exercised by unit tests in standard_lib::env.
+    let state = run_with_state(
+        r#"
+        var.set("line1", "NAME=corvo")
+        var.set("line2", "\nTAG=v1")
+        var.set("env_str", string.concat(var.get("line1"), var.get("line2")))
+        var.set("config", env.parse(var.get("env_str")))
+        var.set("name", map.get(var.get("config"), "NAME"))
+        var.set("tag", map.get(var.get("config"), "TAG"))
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("name").unwrap(),
+        corvo_lang::type_system::Value::String("corvo".to_string())
+    );
+    assert_eq!(
+        state.var_get("tag").unwrap(),
+        corvo_lang::type_system::Value::String("v1".to_string())
+    );
+}

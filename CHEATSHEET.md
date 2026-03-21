@@ -311,7 +311,7 @@ loop {
 
 # Iteration over a list or map
 browse(var.get("items"), idx, item) {
-    sys.echo("${$idx}: ${$item}")
+    sys.echo("${@idx}: ${@item}")
 }
 
 # Compile-time constants

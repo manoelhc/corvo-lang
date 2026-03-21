@@ -2,10 +2,12 @@
 
 var.set("tmp", "/tmp/corvo_fs_demo")
 
-# fs.mkdir - create a directory
+# fs.mkdir - create a directory (try/fallback handles the case where it already exists)
 sys.echo("=== fs.mkdir ===")
-fs.mkdir(var.get("tmp"))
-sys.echo("Created directory: ${var.get("tmp")}")
+try {
+    fs.mkdir(var.get("tmp"))
+} fallback {}
+sys.echo("Directory ready: ${var.get("tmp")}")
 
 # fs.exists - check whether a path exists
 sys.echo("")

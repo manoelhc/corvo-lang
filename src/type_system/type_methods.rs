@@ -176,6 +176,7 @@ pub fn call_list_method(name: &str, args: &[Value]) -> CorvoResult<Value> {
             let parts: Vec<String> = target.iter().map(|v| v.to_string()).collect();
             Ok(Value::String(parts.join(delimiter)))
         }
+        "new" => Ok(Value::List(Vec::new())),
         _ => Err(CorvoError::unknown_function(format!("list.{}", method))),
     }
 }
@@ -245,6 +246,7 @@ pub fn call_map_method(name: &str, args: &[Value]) -> CorvoResult<Value> {
             new_map.extend(other);
             Ok(Value::Map(new_map))
         }
+        "new" => Ok(Value::Map(std::collections::HashMap::new())),
         _ => Err(CorvoError::unknown_function(format!("map.{}", method))),
     }
 }

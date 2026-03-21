@@ -362,11 +362,19 @@ var.set("nums", list.push(var.get("nums"), 9))
 sys.echo(list.join(var.get("nums"), ", "))    # "3, 1, 4, 1, 5, 9"
 sys.echo(list.len(var.get("nums")))            # 6
 
+# Create an empty list with list.new()
+var.set("items", list.new())
+var.set("items", list.push(var.get("items"), "first"))
+
 # Maps
 var.set("config", {"host": "localhost", "port": 8080})
 sys.echo(map.get(var.get("config"), "host"))   # "localhost"
 var.set("config", map.set(var.get("config"), "debug", true))
 sys.echo(json.stringify(var.get("config")))
+
+# Create an empty map with map.new()
+var.set("data", map.new())
+var.set("data", map.set(var.get("data"), "key", "value"))
 ```
 
 ### Subprocess execution

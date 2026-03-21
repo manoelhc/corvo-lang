@@ -5,7 +5,7 @@ use structopt::StructOpt;
 #[structopt(
     name = "corvo",
     about = "Corvo Programming Language",
-    after_help = "Examples:\n  corvo script.corvo              Run a file\n  corvo --repl                    Start interactive REPL\n  corvo --eval 'sys.echo(\"hi\")'  Evaluate an expression\n  corvo --compile script.corvo    Compile to standalone executable\n  corvo --check script.corvo      Check syntax"
+    after_help = "Examples:\n  corvo script.corvo              Run a file\n  corvo --repl                    Start interactive REPL\n  corvo --eval 'sys.echo(\"hi\")'  Evaluate an expression\n  corvo --compile script.corvo    Compile to standalone executable\n  corvo --check script.corvo      Check syntax\n  corvo --lint script.corvo       Analyse code for errors and unknown functions"
 )]
 struct Args {
     #[structopt(help = "Corvo file to execute or compile")]
@@ -22,6 +22,12 @@ struct Args {
 
     #[structopt(long, help = "Check syntax without executing")]
     check: bool,
+
+    #[structopt(
+        long,
+        help = "Analyse code for errors and unknown functions (like cargo clippy)"
+    )]
+    lint: bool,
 
     #[structopt(long, help = "Compile to standalone executable")]
     compile: bool,
@@ -52,10 +58,13 @@ fn main() {
     }
 
     if let Some(source) = args.eval {
+        // In eval mode there is no file path, so we cannot show a source-context
+        // snippet. Use the no-source variant which still prints the error category,
+        // message, and any available help text.
         match corvo_lang::run_source(&source) {
             Ok(_) => {}
             Err(e) => {
-                eprintln!("Error: {}", e);
+                corvo_lang::diagnostic::print_error_no_source(&e);
                 std::process::exit(e.exit_code());
             }
         }
@@ -65,6 +74,8 @@ fn main() {
     if let Some(file) = args.file {
         if args.compile {
             compile_file(&file, args.output.as_deref(), args.debug);
+        } else if args.lint {
+            lint_file(&file);
         } else if args.check {
             check_syntax(&file);
         } else {
@@ -78,10 +89,19 @@ fn main() {
 }
 
 fn run_file(file: &std::path::Path) {
-    match corvo_lang::run_file(file) {
+    let source = match std::fs::read_to_string(file) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: Cannot read '{}': {}", file.display(), e);
+            std::process::exit(1);
+        }
+    };
+
+    match corvo_lang::run_source(&source) {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Error: {}", e);
+            let filename = file.display().to_string();
+            corvo_lang::diagnostic::print_error(&e, &source, &filename);
             std::process::exit(e.exit_code());
         }
     }
@@ -91,7 +111,7 @@ fn compile_file(file: &std::path::Path, output: Option<&std::path::Path>, debug:
     let source = match std::fs::read_to_string(file) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Error: Cannot read '{}': {}", file.display(), e);
+            eprintln!("error: Cannot read '{}': {}", file.display(), e);
             std::process::exit(1);
         }
     };
@@ -126,7 +146,7 @@ fn compile_file(file: &std::path::Path, output: Option<&std::path::Path>, debug:
             }
         }
         Err(e) => {
-            eprintln!("Warning: Pre-execution error: {}", e);
+            eprintln!("warning: Pre-execution error: {}", e);
         }
     }
 
@@ -137,7 +157,7 @@ fn compile_file(file: &std::path::Path, output: Option<&std::path::Path>, debug:
             eprintln!("Compiled successfully: {}", binary.display());
         }
         Err(e) => {
-            eprintln!("Compilation failed: {}", e);
+            eprintln!("error: Compilation failed: {}", e);
             std::process::exit(1);
         }
     }
@@ -147,23 +167,116 @@ fn check_syntax(file: &std::path::Path) {
     let source = match std::fs::read_to_string(file) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Error: Cannot read '{}': {}", file.display(), e);
+            eprintln!("error: Cannot read '{}': {}", file.display(), e);
             std::process::exit(1);
         }
     };
+
+    let filename = file.display().to_string();
 
     match corvo_lang::lexer::Lexer::new(&source).tokenize() {
         Ok(tokens) => match corvo_lang::parser::Parser::new(tokens).parse() {
             Ok(_) => println!("Syntax OK: {}", file.display()),
             Err(e) => {
-                eprintln!("Syntax Error: {}", e);
+                corvo_lang::diagnostic::print_error(&e, &source, &filename);
                 std::process::exit(e.exit_code());
             }
         },
         Err(e) => {
-            eprintln!("Lex Error: {}", e);
+            corvo_lang::diagnostic::print_error(&e, &source, &filename);
             std::process::exit(e.exit_code());
         }
+    }
+}
+
+/// Run the full lint pass on a Corvo file.
+///
+/// This performs lexing + parsing (reporting any errors with rich diagnostics)
+/// and then walks the AST to detect issues such as unknown function calls,
+/// offering "did you mean?" suggestions – similar to `cargo clippy`.
+fn lint_file(file: &std::path::Path) {
+    use corvo_lang::diagnostic::{lint_program, print_error, LintSeverity};
+
+    let source = match std::fs::read_to_string(file) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: Cannot read '{}': {}", file.display(), e);
+            std::process::exit(1);
+        }
+    };
+
+    let filename = file.display().to_string();
+
+    // ── Lex ──────────────────────────────────────────────────────────────────
+    let tokens = match corvo_lang::lexer::Lexer::new(&source).tokenize() {
+        Ok(t) => t,
+        Err(e) => {
+            print_error(&e, &source, &filename);
+            std::process::exit(e.exit_code());
+        }
+    };
+
+    // ── Parse ─────────────────────────────────────────────────────────────────
+    let program = match corvo_lang::parser::Parser::new(tokens).parse() {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(&e, &source, &filename);
+            std::process::exit(e.exit_code());
+        }
+    };
+
+    // ── Static analysis ───────────────────────────────────────────────────────
+    let diagnostics = lint_program(&program);
+
+    if diagnostics.is_empty() {
+        println!("corvo: `{}` - no issues found!", file.display());
+        return;
+    }
+
+    let mut has_error = false;
+    for diag in &diagnostics {
+        if diag.severity == LintSeverity::Error {
+            has_error = true;
+        }
+        eprintln!("{}: {}", diag.severity, diag.message);
+        if let Some(ref help) = diag.help {
+            eprintln!("  help: {}", help);
+        }
+    }
+
+    let errors = diagnostics
+        .iter()
+        .filter(|d| d.severity == LintSeverity::Error)
+        .count();
+    let warnings = diagnostics
+        .iter()
+        .filter(|d| d.severity == LintSeverity::Warning)
+        .count();
+
+    eprintln!();
+    if errors > 0 && warnings > 0 {
+        eprintln!(
+            "corvo: {} error(s) and {} warning(s) found in `{}`",
+            errors,
+            warnings,
+            file.display()
+        );
+    } else if errors > 0 {
+        eprintln!(
+            "corvo: {} error(s) found in `{}`",
+            errors,
+            file.display()
+        );
+    } else {
+        eprintln!(
+            "corvo: {} warning(s) found in `{}`",
+            warnings,
+            file.display()
+        );
+    }
+
+    if has_error {
+        std::process::exit(1);
     }
 }
 
@@ -177,6 +290,7 @@ fn print_usage() {
     eprintln!("  -o, --output <PATH>  Output path (for --compile)");
     eprintln!("  -v, --version        Print version");
     eprintln!("      --check          Check syntax without executing");
+    eprintln!("      --lint           Analyse code for errors (like cargo clippy)");
     eprintln!("      --debug          Use debug build mode (faster compile)");
     eprintln!();
     eprintln!("Examples:");
@@ -185,4 +299,5 @@ fn print_usage() {
     eprintln!("  corvo --compile script.corvo     Compile to executable");
     eprintln!("  corvo --compile script.corvo -o myapp");
     eprintln!("  corvo --eval 'sys.echo(\"hi\")'   Evaluate an expression");
+    eprintln!("  corvo --lint script.corvo        Analyse code for issues");
 }

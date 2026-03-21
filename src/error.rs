@@ -171,6 +171,44 @@ impl CorvoError {
             Self::InvalidArgument { .. } => 14,
         }
     }
+
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::Lexing { span, .. }
+            | Self::Parsing { span, .. }
+            | Self::Type { span, .. }
+            | Self::Runtime { span, .. }
+            | Self::Assertion { span, .. }
+            | Self::FileSystem { span, .. }
+            | Self::Network { span, .. }
+            | Self::UnknownFunction { span, .. }
+            | Self::StaticModification { span, .. }
+            | Self::DivisionByZero { span }
+            | Self::VariableNotFound { span, .. }
+            | Self::StaticNotFound { span, .. }
+            | Self::Io { span, .. }
+            | Self::InvalidArgument { span, .. } => *span,
+        }
+    }
+
+    pub fn kind_label(&self) -> &'static str {
+        match self {
+            Self::Lexing { .. } => "lexing error",
+            Self::Parsing { .. } => "syntax error",
+            Self::Type { .. } => "type error",
+            Self::Runtime { .. } => "runtime error",
+            Self::Assertion { .. } => "assertion failed",
+            Self::FileSystem { .. } => "file system error",
+            Self::Network { .. } => "network error",
+            Self::UnknownFunction { .. } => "unknown function",
+            Self::StaticModification { .. } => "static modification error",
+            Self::DivisionByZero { .. } => "division by zero",
+            Self::VariableNotFound { .. } => "variable not found",
+            Self::StaticNotFound { .. } => "static not found",
+            Self::Io { .. } => "i/o error",
+            Self::InvalidArgument { .. } => "invalid argument",
+        }
+    }
 }
 
 pub type CorvoResult<T> = Result<T, CorvoError>;

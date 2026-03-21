@@ -1,0 +1,31 @@
+# http_example.corvo - http.get, http.post, http.put, http.delete
+# NOTE: These examples require an active internet connection.
+
+sys.echo("=== http.get ===")
+var.set("res", http.get("https://httpbin.org/get"))
+sys.echo("Status: ${map.get(var.get("res"), "status_code")}")
+var.set("body", json.parse(map.get(var.get("res"), "response_body")))
+sys.echo("URL reported by server: ${map.get(var.get("body"), "url")}")
+
+# http.get with custom headers
+sys.echo("")
+sys.echo("=== http.get with headers ===")
+var.set("headers", {"Accept": "application/json", "X-Custom": "corvo"})
+var.set("res2", http.get("https://httpbin.org/headers", var.get("headers")))
+sys.echo("Status: ${map.get(var.get("res2"), "status_code")}")
+
+sys.echo("")
+sys.echo("=== http.post ===")
+var.set("payload", json.stringify({"name": "Corvo", "type": "language"}))
+var.set("post_res", http.post("https://httpbin.org/post", var.get("payload")))
+sys.echo("Status: ${map.get(var.get("post_res"), "status_code")}")
+
+sys.echo("")
+sys.echo("=== http.put ===")
+var.set("put_res", http.put("https://httpbin.org/put", json.stringify({"updated": true})))
+sys.echo("Status: ${map.get(var.get("put_res"), "status_code")}")
+
+sys.echo("")
+sys.echo("=== http.delete ===")
+var.set("del_res", http.delete("https://httpbin.org/delete"))
+sys.echo("Status: ${map.get(var.get("del_res"), "status_code")}")

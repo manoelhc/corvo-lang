@@ -1,6 +1,7 @@
 pub mod crypto;
 pub mod csv;
 pub mod dns;
+pub mod env;
 pub mod fs;
 pub mod hcl;
 pub mod http;
@@ -79,6 +80,8 @@ pub fn call(
         "csv.parse" => csv::parse_value(args, named_args),
 
         "xml.parse" => xml::parse_value(args, named_args),
+
+        "env.parse" => env::parse_value(args, named_args),
 
         "llm.model" => llm::model(args, named_args),
         "llm.prompt" => llm::prompt(args, named_args),

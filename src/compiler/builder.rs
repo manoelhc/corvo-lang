@@ -170,9 +170,8 @@ impl Compiler {
             key_literal
         ));
         main_rs.push_str("    let decrypted: Vec<u8> = ENCRYPTED_SOURCE.iter().enumerate()\n");
-        main_rs.push_str(
-            "        .map(|(i, &b)| b ^ OBFUSCATION_KEY[i % OBFUSCATION_KEY.len()])\n",
-        );
+        main_rs
+            .push_str("        .map(|(i, &b)| b ^ OBFUSCATION_KEY[i % OBFUSCATION_KEY.len()])\n");
         main_rs.push_str("        .collect();\n");
         main_rs.push_str(
             "    let source = String::from_utf8(decrypted).expect(\"invalid UTF-8 in source\");\n",
@@ -866,7 +865,7 @@ mod tests {
     fn test_statics_to_json_bytes_roundtrip() {
         let mut statics = HashMap::new();
         statics.insert("KEY".to_string(), Value::String("secret".to_string()));
-        statics.insert("NUM".to_string(), Value::Number(3.14));
+        statics.insert("NUM".to_string(), Value::Number(2.5));
         statics.insert("FLAG".to_string(), Value::Boolean(true));
         statics.insert("EMPTY".to_string(), Value::Null);
 
@@ -875,8 +874,8 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_slice(&json_bytes).unwrap();
         let obj = parsed.as_object().unwrap();
         assert_eq!(obj["KEY"].as_str().unwrap(), "secret");
-        assert!((obj["NUM"].as_f64().unwrap() - 3.14).abs() < 1e-10);
-        assert_eq!(obj["FLAG"].as_bool().unwrap(), true);
+        assert!((obj["NUM"].as_f64().unwrap() - 2.5).abs() < 1e-10);
+        assert!(obj["FLAG"].as_bool().unwrap());
         assert!(obj["EMPTY"].is_null());
     }
 

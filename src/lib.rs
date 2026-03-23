@@ -53,11 +53,7 @@ pub fn run_repl() {
 /// statics this way keeps all static keys and string values out of the
 /// compiled binary as human-readable strings (they won't appear in `strings`
 /// output).
-pub fn load_statics_from_encrypted_bytes(
-    state: &mut RuntimeState,
-    encrypted: &[u8],
-    key: &[u8],
-) {
+pub fn load_statics_from_encrypted_bytes(state: &mut RuntimeState, encrypted: &[u8], key: &[u8]) {
     let decrypted: Vec<u8> = encrypted
         .iter()
         .enumerate()

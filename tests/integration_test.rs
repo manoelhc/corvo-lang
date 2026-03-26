@@ -2074,3 +2074,77 @@ fn test_inline_regex_in_re_match() {
         corvo_lang::type_system::Value::Boolean(true)
     );
 }
+
+#[test]
+fn test_template_render_basic() {
+    let state = run_with_state(
+        r#"
+        var.set("data", map.new())
+        var.set("data", map.set(var.get("data"), "name", "Corvo"))
+        var.set("result", template.render("Hello, {{name}}!", var.get("data")))
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("result").unwrap(),
+        corvo_lang::type_system::Value::String("Hello, Corvo!".to_string())
+    );
+}
+
+#[test]
+fn test_template_render_multiple_vars() {
+    let state = run_with_state(
+        r#"
+        var.set("data", map.new())
+        var.set("data", map.set(var.get("data"), "lang", "Rust"))
+        var.set("data", map.set(var.get("data"), "version", "0.1.0"))
+        var.set("result", template.render("{{lang}} v{{version}}", var.get("data")))
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("result").unwrap(),
+        corvo_lang::type_system::Value::String("Rust v0.1.0".to_string())
+    );
+}
+
+#[test]
+fn test_template_render_missing_key_empty() {
+    let state = run_with_state(
+        r#"
+        var.set("data", map.new())
+        var.set("result", template.render("Hello, {{missing}}!", var.get("data")))
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("result").unwrap(),
+        corvo_lang::type_system::Value::String("Hello, !".to_string())
+    );
+}
+
+#[test]
+fn test_template_render_no_placeholders() {
+    let state = run_with_state(
+        r#"
+        var.set("data", map.new())
+        var.set("result", template.render("static text", var.get("data")))
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("result").unwrap(),
+        corvo_lang::type_system::Value::String("static text".to_string())
+    );
+}
+
+#[test]
+fn test_template_render_file_missing() {
+    let result = run_with_state(
+        r#"
+        var.set("data", map.new())
+        var.set("result", template.render_file("/nonexistent/template.hbs", var.get("data")))
+        "#,
+    );
+    assert!(result.is_err());
+}

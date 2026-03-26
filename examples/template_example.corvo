@@ -1,0 +1,22 @@
+# template_example.corvo - Handlebars template rendering
+
+sys.echo("=== Template Example ===")
+
+# Basic variable substitution
+var.set("data", map.new())
+var.set("data", map.set(var.get("data"), "name", "Corvo"))
+var.set("data", map.set(var.get("data"), "version", "0.1.0"))
+
+var.set("tmpl", "Hello, {{name}}! Version: {{version}}")
+var.set("result", template.render(var.get("tmpl"), var.get("data")))
+sys.echo(var.get("result"))
+
+# Multi-field template
+var.set("report_tmpl", "Project: {{name}}\nVersion: {{version}}\nLanguage: {{language}}")
+var.set("report_data", map.new())
+var.set("report_data", map.set(var.get("report_data"), "name", "corvo-lang"))
+var.set("report_data", map.set(var.get("report_data"), "version", "0.1.0"))
+var.set("report_data", map.set(var.get("report_data"), "language", "Rust"))
+
+var.set("report", template.render(var.get("report_tmpl"), var.get("report_data")))
+sys.echo(var.get("report"))

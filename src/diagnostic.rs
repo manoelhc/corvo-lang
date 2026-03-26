@@ -339,6 +339,9 @@ pub const KNOWN_FUNCTIONS: &[&str] = &[
     "xml.parse",
     // env
     "env.parse",
+    // template
+    "template.render",
+    "template.render_file",
     // llm
     "llm.model",
     "llm.prompt",

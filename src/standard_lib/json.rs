@@ -49,7 +49,7 @@ pub fn json_to_value(json: &serde_json::Value) -> CorvoResult<Value> {
     }
 }
 
-fn value_to_json(value: &Value) -> CorvoResult<serde_json::Value> {
+pub fn value_to_json(value: &Value) -> CorvoResult<serde_json::Value> {
     match value {
         Value::Null => Ok(serde_json::Value::Null),
         Value::Boolean(b) => Ok(serde_json::Value::Bool(*b)),

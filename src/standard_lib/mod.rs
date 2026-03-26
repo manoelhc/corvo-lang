@@ -12,6 +12,7 @@ pub mod notifications;
 pub mod os;
 pub mod re;
 pub mod sys;
+pub mod template;
 pub mod xml;
 pub mod yaml;
 
@@ -84,6 +85,9 @@ pub fn call(
         "xml.parse" => xml::parse_value(args, named_args),
 
         "env.parse" => env::parse_value(args, named_args),
+
+        "template.render" => template::render(args, named_args),
+        "template.render_file" => template::render_file(args, named_args),
 
         "llm.model" => llm::model(args, named_args),
         "llm.prompt" => llm::prompt(args, named_args),

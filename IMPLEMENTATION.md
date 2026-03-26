@@ -258,6 +258,10 @@ match(<expr>) {
 * `csv.parse(data: string, delimiter: string) -> list`
 * `xml.parse(data: string) -> map`
 
+### Templating (`template`)
+* `template.render(template: string, data: map) -> string`: Render a [Handlebars](https://handlebarsjs.com) template string using the key/value pairs in `data`. Missing keys render as empty strings. Example: `template.render("Hello, {{name}}!", {"name": "World"})` → `"Hello, World!"`.
+* `template.render_file(path: string, data: map) -> string`: Load a Handlebars template from the file at `path` and render it with `data`.
+
 ### Security & Crypto (`crypto`)
 * `crypto.hash(algorithm: string, data: string) -> string` (Supports "md5", "sha256", "sha512")
 * `crypto.hash_file(algorithm: string, path: string) -> string` (Hashes a file's contents; supports "md5", "sha256", "sha512")

@@ -167,6 +167,17 @@ Functions are grouped by module. Parameter names in `[brackets]` are optional.
 
 ---
 
+## `template` — Handlebars Templating
+
+| Function | Parameters | Returns | Description |
+|---|---|---|---|
+| `template.render` | `template: string, data: map` | `string` | Render a [Handlebars](https://handlebarsjs.com) template string with `data` |
+| `template.render_file` | `path: string, data: map` | `string` | Load a template from `path` and render it with `data` |
+
+**Example file:** [`examples/template_example.corvo`](examples/template_example.corvo)
+
+---
+
 ## `llm` — Large Language Models *(placeholder)*
 
 | Function | Parameters | Returns | Description |

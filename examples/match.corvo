@@ -1,17 +1,17 @@
 # match expression: assign a value based on the matched value
 
-var.set("file", "hosts")
+@file = "hosts"
 
-var.set("description", match(var.get("file")) {
+@description = match(@file) {
     "" => "empty",
     "hosts" => "hosts file",
     _ => "not empty"
-})
+}
 
-sys.echo(var.get("description"))
+sys.echo(@description)
 
 # match with @shorthand syntax
-@status = match(var.get("file")) {
+@status = match(@file) {
     "hosts" => "found",
     _ => "not found"
 }
@@ -19,9 +19,9 @@ sys.echo(var.get("description"))
 sys.echo(@status)
 
 # match with number patterns
-var.set("code", 200)
+@code = 200
 
-@message = match(var.get("code")) {
+@message = match(@code) {
     200 => "OK",
     404 => "Not Found",
     500 => "Internal Server Error",

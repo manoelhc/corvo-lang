@@ -111,6 +111,11 @@ impl Parser {
                         self.tokens.get(self.current + 2).map(|t| &t.token_type),
                         Some(TokenType::MinusEqual)
                     );
+                let is_or_assign = next_is_ident
+                    && matches!(
+                        self.tokens.get(self.current + 2).map(|t| &t.token_type),
+                        Some(TokenType::OrEqual)
+                    );
                 if is_simple_assignment {
                     self.parse_at_var_set()?
                 } else if is_index_assignment {
@@ -123,6 +128,8 @@ impl Parser {
                     self.parse_at_var_add_assign()?
                 } else if is_sub_assign {
                     self.parse_at_var_sub_assign()?
+                } else if is_or_assign {
+                    self.parse_at_var_or_assign()?
                 } else {
                     self.parse_expr_statement()?
                 }
@@ -328,6 +335,29 @@ impl Parser {
         self.advance(); // consume '-='
         let value = self.parse_expression()?;
         Ok(Stmt::VarSubAssign { name, value })
+    }
+
+    fn parse_at_var_or_assign(&mut self) -> CorvoResult<Stmt> {
+        self.advance(); // consume '@'
+        let name = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected variable name after '@'")),
+        };
+        self.advance(); // consume identifier
+        self.advance(); // consume 'or='
+        self.consume(TokenType::LeftParen, "Expected '(' after 'or='")?;
+        let mut candidates = Vec::new();
+        if !self.check(TokenType::RightParen) {
+            candidates.push(self.parse_expression()?);
+            while self.match_token(TokenType::Comma) {
+                candidates.push(self.parse_expression()?);
+            }
+        }
+        self.consume(TokenType::RightParen, "Expected ')' after candidates")?;
+        if candidates.is_empty() {
+            return Err(self.error("'or=' requires at least one candidate"));
+        }
+        Ok(Stmt::VarOrAssign { name, candidates })
     }
 
     fn parse_at_index_set_or_expr(&mut self) -> CorvoResult<Stmt> {

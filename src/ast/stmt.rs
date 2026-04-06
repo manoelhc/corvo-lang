@@ -31,6 +31,10 @@ pub enum Stmt {
         name: String,
         value: Expr,
     },
+    VarOrAssign {
+        name: String,
+        candidates: Vec<Expr>,
+    },
     ExprStmt {
         expr: Expr,
     },

@@ -86,6 +86,11 @@ sys.echo(@target_dir)
 @msg = "hello"
 @msg += " world"   # concatenate
 @msg -= "hello"    # remove all occurrences
+
+# or= shorthand: assign the first truthy candidate (errors are skipped)
+@cfg = map.new()
+@host or= (@cfg["host"], "localhost")   # "localhost" — missing key is skipped
+@flag or= (false, false, true)          # true
 ```
 
 ### 3.2 Compile-Time Constants (`static`)

@@ -367,6 +367,7 @@ These are language-level constructs, not stdlib functions, but are used in every
 | `@name -= n` | Subtract `n` from a number variable |
 | `@name += "str"` | Concatenate `"str"` to a string variable |
 | `@name -= "str"` | Remove all occurrences of `"str"` from a string variable |
+| `@name or= (v1, v2, ...)` | Assign the first truthy candidate; errors are skipped |
 | `static.set("name", value)` | Store a compile-time constant (inside `prep {}`) |
 | `static.get("name")` | Retrieve a compile-time constant |
 

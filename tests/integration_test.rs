@@ -1037,17 +1037,19 @@ fn test_crypto_checksum_matches_hash_file_sha256() {
 
 #[test]
 fn test_file_write_read_exists() {
-    let state = run_with_state(
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().to_str().unwrap().replace('\\', "\\\\");
+    let source = format!(
         r#"
-        var.set("path", "/tmp/corvo_integration_test.txt")
+        var.set("path", "{path}")
         fs.write(var.get("path"), "integration test content")
         var.set("exists", fs.exists(var.get("path")))
         var.set("content", fs.read(var.get("path")))
         fs.delete(var.get("path"))
         var.set("deleted", fs.exists(var.get("path")))
-        "#,
-    )
-    .unwrap();
+        "#
+    );
+    let state = run_with_state(&source).unwrap();
     assert_eq!(
         state.var_get("exists").unwrap(),
         corvo_lang::type_system::Value::Boolean(true)

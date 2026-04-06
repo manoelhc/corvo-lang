@@ -37,7 +37,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 directories = "5.0"
 chrono = "0.4"
-uzers = "0.11"
 hmac = "0.12"
 base64 = "0.21"
 dns-lookup = "2.0"
@@ -59,3 +58,6 @@ proptest = "1.4"
 [features]
 default = ["repl"]
 repl = ["rustyline"]
+
+[target.'cfg(unix)'.dependencies]
+uzers = "0.11"

@@ -2922,3 +2922,101 @@ fn test_at_var_sub_assign_type_mismatch_errors() {
     );
     assert!(result.is_err());
 }
+
+// --- or= shorthand assignment ---
+
+#[test]
+fn test_at_var_or_assign_picks_first_truthy() {
+    let state = run_with_state(
+        r#"
+        @x or= (false, false, false, true)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::Boolean(true)
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_picks_first_truthy_value() {
+    let state = run_with_state(
+        r#"
+        @x or= (false, 0, "hello", "world")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::String("hello".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_skips_error_candidates() {
+    let state = run_with_state(
+        r#"
+        @config = map.new()
+        @host or= (@config["host"], "localhost")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("host").unwrap(),
+        corvo_lang::type_system::Value::String("localhost".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_skips_falsy_then_uses_truthy_string() {
+    let state = run_with_state(
+        r#"
+        @x or= (false, "", "found")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::String("found".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_single_truthy_candidate() {
+    let state = run_with_state(
+        r#"
+        @x or= (42)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::Number(42.0)
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_all_falsy_errors() {
+    let result = run_with_state(
+        r#"
+        @var or= (false, 0, "")
+        "#,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_at_var_or_assign_overwrites_existing_var() {
+    let state = run_with_state(
+        r#"
+        @result = "old"
+        @result or= (false, "new")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("result").unwrap(),
+        corvo_lang::type_system::Value::String("new".to_string())
+    );
+}

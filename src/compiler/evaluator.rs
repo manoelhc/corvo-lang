@@ -131,6 +131,20 @@ impl Evaluator {
                 state.var_set(name.clone(), updated);
                 Ok(())
             }
+            Stmt::VarOrAssign { name, candidates } => {
+                for candidate in candidates {
+                    if let Ok(val) = self.eval_expr(candidate, state) {
+                        if val.is_truthy() {
+                            state.var_set(name.clone(), val);
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(CorvoError::runtime(format!(
+                    "No truthy value found in or= candidates for variable '{}'",
+                    name
+                )))
+            }
             Stmt::ExprStmt { expr } => {
                 // Intercept procedure.call(...) so we can run the body with &mut state.
                 if let Expr::MethodCall {

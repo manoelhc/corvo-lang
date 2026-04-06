@@ -449,6 +449,10 @@ impl<'a> Lexer<'a> {
         let end = self.pos;
 
         let keyword = match name.as_str() {
+            "or" if !self.is_at_end() && self.peek() == '=' => {
+                self.advance(); // consume '='
+                TokenType::OrEqual
+            }
             "prep" => TokenType::Prep,
             "static" => TokenType::Static,
             "var" => TokenType::Var,

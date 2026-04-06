@@ -176,6 +176,11 @@ fn lint_stmt(stmt: &Stmt, out: &mut Vec<LintDiagnostic>) {
         }
         Stmt::VarAddAssign { value, .. } => lint_expr(value, out),
         Stmt::VarSubAssign { value, .. } => lint_expr(value, out),
+        Stmt::VarOrAssign { candidates, .. } => {
+            for candidate in candidates {
+                lint_expr(candidate, out);
+            }
+        }
     }
 }
 

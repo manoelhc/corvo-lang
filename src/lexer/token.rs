@@ -43,6 +43,7 @@ pub enum TokenType {
     FatArrow,
     PlusEqual,
     MinusEqual,
+    OrEqual,
     Increment,
     Decrement,
 
@@ -97,6 +98,7 @@ impl fmt::Display for TokenType {
             Self::FatArrow => write!(f, "=>"),
             Self::PlusEqual => write!(f, "+="),
             Self::MinusEqual => write!(f, "-="),
+            Self::OrEqual => write!(f, "or="),
             Self::Increment => write!(f, "++"),
             Self::Decrement => write!(f, "--"),
             Self::StringInterpolation(_) => write!(f, "string(...)"),

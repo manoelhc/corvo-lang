@@ -141,7 +141,7 @@ impl Evaluator {
                     }
                 }
                 Err(CorvoError::runtime(format!(
-                    "or=: no valid (truthy) value found for '{}'",
+                    "No truthy value found in or= candidates for variable '{}'",
                     name
                 )))
             }

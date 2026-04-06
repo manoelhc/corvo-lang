@@ -10,7 +10,7 @@ sys.echo(@result)   # true
 @greeting or= (0, "", "hello")
 sys.echo(@greeting)   # hello
 
-# Map fallback: skips a missing key (which errors) and falls back to default.
+# Map fallback: skips a missing key (which would cause an error) and falls back to default.
 @config = map.new()
 @host or= (@config["host"], "localhost")
 sys.echo(@host)   # localhost

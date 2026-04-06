@@ -719,7 +719,8 @@ mod tests {
 
     #[test]
     fn test_exists_true() {
-        let args = vec![Value::String("/tmp".to_string())];
+        let tmp = std::env::temp_dir();
+        let args = vec![Value::String(tmp.to_string_lossy().to_string())];
         assert_eq!(exists(&args, &empty_args()).unwrap(), Value::Boolean(true));
     }
 
@@ -761,7 +762,8 @@ mod tests {
 
     #[test]
     fn test_stat_directory() {
-        let args = vec![Value::String("/tmp".to_string())];
+        let tmp = std::env::temp_dir();
+        let args = vec![Value::String(tmp.to_string_lossy().to_string())];
         let result = stat(&args, &empty_args()).unwrap();
         match result {
             Value::Map(m) => {

@@ -47,6 +47,86 @@
   } fallback {}
 }
 
+@get_entry_suffix = procedure(@entry, @classify_flag, @suf_out) {
+  @suf_out = ""
+  try {
+    assert_eq(@classify_flag, true)
+    try {
+      assert_eq(@entry["is_dir"], true)
+      @suf_out = "/"
+    } fallback {
+      try {
+        assert_eq(@entry["is_symlink"], true)
+        @suf_out = "@"
+      } fallback {
+        try {
+          assert_eq(@entry["is_executable"], true)
+          @suf_out = "*"
+        } fallback {}
+      }
+    }
+  } fallback {}
+}
+
+@get_size_string = procedure(@entry, @human_flag, @si_flag, @sz_out) {
+  @_ft = map.get(@entry, "file_type_char", "-")
+  @_is_dir = map.get(@entry, "is_dir", false)
+  try {
+    assert_eq(@_ft, "b")
+    @_maj = number.to_string(map.get(@entry, "major", 0))
+    @_min = number.to_string(map.get(@entry, "minor", 0))
+    @sz_out = "${@_maj}, ${@_min}"
+  } fallback {
+    try {
+      assert_eq(@_ft, "c")
+      @_maj = number.to_string(map.get(@entry, "major", 0))
+      @_min = number.to_string(map.get(@entry, "minor", 0))
+      @sz_out = "${@_maj}, ${@_min}"
+    } fallback {
+      @sz_out = number.to_string(map.get(@entry, "size", 0))
+      try {
+        assert_eq(@human_flag, true)
+        try {
+          assert_eq(@_is_dir, true)
+          @sz_out = math.human_bytes(map.get(@entry, "size", 0), false)
+        } fallback {
+          @sz_out = math.human_bytes(map.get(@entry, "size", 0), @si_flag)
+        }
+      } fallback {}
+    }
+  }
+}
+
+@get_time_string = procedure(@entry, @time_access_flag, @time_change_flag, @fmt_str, @tstr_out) {
+  @_tsec = map.get(@entry, "mtime_sec", 0)
+  @_tnsec = map.get(@entry, "mtime_nsec", 0)
+  try {
+    assert_eq(@time_access_flag, true)
+    @_tsec = map.get(@entry, "atime_sec", 0)
+    @_tnsec = map.get(@entry, "atime_nsec", 0)
+  } fallback {}
+  try {
+    assert_eq(@time_change_flag, true)
+    @_tsec = map.get(@entry, "ctime_sec", 0)
+    @_tnsec = map.get(@entry, "ctime_nsec", 0)
+  } fallback {}
+  @tstr_out = time.format_local(@_tsec, @_tnsec, @fmt_str)
+}
+
+@print_total_blocks = procedure(@sorted_list, @human_flag) {
+  @_tb = 0
+  browse(@sorted_list, _ptb, _pee) {
+    @_tb = math.add(@_tb, map.get(_pee, "blocks", 0))
+  }
+  @_tk = number.ceil(math.div(@_tb, 2))
+  try {
+    assert_eq(@human_flag, true)
+    sys.echo("total ${math.human_bytes(math.mul(@_tk, 1024), false)}")
+  } fallback {
+    sys.echo("total ${@_tk}")
+  }
+}
+
 @default_to_dot_if_empty.call(@paths, @paths)
 
 try {
@@ -419,34 +499,14 @@ loop {
   try {
     assert_eq(@long, true)
     assert_eq(@from_dir_read, true)
-    @tblocks = 0
-    browse(@sorted, _tb, ee) {
-      @tblocks = math.add(@tblocks, map.get(ee, "blocks", 0))
-    }
-    @tk = number.ceil(math.div(@tblocks, 2))
-    try {
-      assert_eq(@human, true)
-      sys.echo("total ${math.human_bytes(math.mul(@tk, 1024), false)}")
-    } fallback {
-      sys.echo("total ${@tk}")
-    }
+    @print_total_blocks.call(@sorted, @human)
   } fallback {}
 
   try {
     assert_eq(@blocks, true)
     assert_eq(@long, false)
     assert_eq(@from_dir_read, true)
-    @tblocks = 0
-    browse(@sorted, _tbs, ee) {
-      @tblocks = math.add(@tblocks, map.get(ee, "blocks", 0))
-    }
-    @tk2 = number.ceil(math.div(@tblocks, 2))
-    try {
-      assert_eq(@human, true)
-      sys.echo("total ${math.human_bytes(math.mul(@tk2, 1024), false)}")
-    } fallback {
-      sys.echo("total ${@tk2}")
-    }
+    @print_total_blocks.call(@sorted, @human)
   } fallback {}
 
   @max_ino_s = 1
@@ -514,47 +574,13 @@ loop {
         @max_g = math.max(@max_g, string.len(@ggm))
       } fallback {}
 
-      @ftm or= (ee["file_type_char"], "-")
-      @idm or= (ee["is_dir"], false)
-      try {
-        assert_eq(@ftm, "b")
-        @_maj = number.to_string(map.get(ee, "major", 0))
-        @_min = number.to_string(map.get(ee, "minor", 0))
-        @szm = "${@_maj}, ${@_min}"
-      } fallback {
-        try {
-          assert_eq(@ftm, "c")
-          @_maj = number.to_string(map.get(ee, "major", 0))
-          @_min = number.to_string(map.get(ee, "minor", 0))
-          @szm = "${@_maj}, ${@_min}"
-        } fallback {
-          @szm = number.to_string(map.get(ee, "size", 0))
-          try {
-            assert_eq(@human, true)
-            try {
-              assert_eq(@idm, true)
-              @szm = math.human_bytes(map.get(ee, "size", 0), false)
-            } fallback {
-              @szm = math.human_bytes(map.get(ee, "size", 0), @si)
-            }
-          } fallback {}
-        }
-      }
+      @_em = ee
+      @get_size_string.call(@_em, @human, @si, @szm)
       @max_sz = math.max(@max_sz, string.len(@szm))
 
-      @tsec_m = map.get(ee, "mtime_sec", 0)
-      @tnsec_m = map.get(ee, "mtime_nsec", 0)
-      try {
-        assert_eq(@o["time_access"], true)
-        @tsec_m = map.get(ee, "atime_sec", 0)
-        @tnsec_m = map.get(ee, "atime_nsec", 0)
-      } fallback {}
-      try {
-        assert_eq(@o["time_change"], true)
-        @tsec_m = map.get(ee, "ctime_sec", 0)
-        @tnsec_m = map.get(ee, "ctime_nsec", 0)
-      } fallback {}
-      @tstr_m = time.format_local(@tsec_m, @tnsec_m, @tfmt)
+      @_ta = map.get(@o, "time_access", false)
+      @_tc = map.get(@o, "time_change", false)
+      @get_time_string.call(@_em, @_ta, @_tc, @tfmt, @tstr_m)
       @max_tm = math.max(@max_tm, string.len(@tstr_m))
     }
   } fallback {}
@@ -581,24 +607,8 @@ loop {
       @names_out = []
       browse(@sorted, _so, ee) {
         @nm = ee["name"]
-        @suf = ""
-        try {
-          assert_eq(@classify, true)
-          try {
-            assert_eq(ee["is_dir"], true)
-            @suf = "/"
-          } fallback {
-            try {
-              assert_eq(ee["is_symlink"], true)
-              @suf = "@"
-            } fallback {
-              try {
-                assert_eq(ee["is_executable"], true)
-                @suf = "*"
-              } fallback {}
-            }
-          }
-        } fallback {}
+        @_e = ee
+        @get_entry_suffix.call(@_e, @classify, @suf)
         @names_out = list.push(@names_out, "${@nm}${@suf}")
       }
       sys.echo(list.join(@names_out, ", "))
@@ -608,48 +618,16 @@ loop {
         @names_out2 = []
         browse(@sorted, _so2, ee) {
           @nm = ee["name"]
-          @suf = ""
-          try {
-            assert_eq(@classify, true)
-            try {
-              assert_eq(ee["is_dir"], true)
-              @suf = "/"
-            } fallback {
-              try {
-                assert_eq(ee["is_symlink"], true)
-                @suf = "@"
-              } fallback {
-                try {
-                  assert_eq(ee["is_executable"], true)
-                  @suf = "*"
-                } fallback {}
-              }
-            }
-          } fallback {}
+          @_e = ee
+          @get_entry_suffix.call(@_e, @classify, @suf)
           @names_out2 = list.push(@names_out2, "${@nm}${@suf}")
         }
         sys.echo(list.columnate(@names_out2, @term_w))
       } fallback {
         browse(@sorted, _si, ee) {
           @nm = ee["name"]
-          @suf = ""
-          try {
-            assert_eq(@classify, true)
-            try {
-              assert_eq(ee["is_dir"], true)
-              @suf = "/"
-            } fallback {
-              try {
-                assert_eq(ee["is_symlink"], true)
-                @suf = "@"
-              } fallback {
-                try {
-                  assert_eq(ee["is_executable"], true)
-                  @suf = "*"
-                } fallback {}
-              }
-            }
-          } fallback {}
+          @_e = ee
+          @get_entry_suffix.call(@_e, @classify, @suf)
 
           @namel = "${@nm}${@suf}"
           try {
@@ -713,48 +691,12 @@ loop {
 
             @uu_p = string.pad_end(@uu, @max_u, " ")
 
-            @ft or= (ee["file_type_char"], "-")
-            @id or= (ee["is_dir"], false)
-            try {
-              assert_eq(@ft, "b")
-              @_maj = number.to_string(map.get(ee, "major", 0))
-              @_min = number.to_string(map.get(ee, "minor", 0))
-              @sz_raw = "${@_maj}, ${@_min}"
-            } fallback {
-              try {
-                assert_eq(@ft, "c")
-                @_maj = number.to_string(map.get(ee, "major", 0))
-                @_min = number.to_string(map.get(ee, "minor", 0))
-                @sz_raw = "${@_maj}, ${@_min}"
-              } fallback {
-                @sz_raw = number.to_string(map.get(ee, "size", 0))
-                try {
-                  assert_eq(@human, true)
-                  try {
-                    assert_eq(@id, true)
-                    @sz_raw = math.human_bytes(map.get(ee, "size", 0), false)
-                  } fallback {
-                    @sz_raw = math.human_bytes(map.get(ee, "size", 0), @si)
-                  }
-                } fallback {}
-              }
-            }
+            @get_size_string.call(@_e, @human, @si, @sz_raw)
             @szcol = string.pad_start(@sz_raw, @max_sz, " ")
 
-            @tsec = map.get(ee, "mtime_sec", 0)
-            @tnsec = map.get(ee, "mtime_nsec", 0)
-            try {
-              assert_eq(@o["time_access"], true)
-              @tsec = map.get(ee, "atime_sec", 0)
-              @tnsec = map.get(ee, "atime_nsec", 0)
-            } fallback {}
-            try {
-              assert_eq(@o["time_change"], true)
-              @tsec = map.get(ee, "ctime_sec", 0)
-              @tnsec = map.get(ee, "ctime_nsec", 0)
-            } fallback {}
-
-            @tstr = time.format_local(@tsec, @tnsec, @tfmt)
+            @_ta = map.get(@o, "time_access", false)
+            @_tc = map.get(@o, "time_change", false)
+            @get_time_string.call(@_e, @_ta, @_tc, @tfmt, @tstr)
             @t_p = string.pad_end(@tstr, @max_tm, " ")
 
             try {

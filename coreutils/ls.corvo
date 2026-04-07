@@ -2,6 +2,10 @@
 # Run: `corvo coreutils/ls.corvo [OPTION]... [FILE]...`
 # For deterministic diffs vs GNU ls: `LC_ALL=C TZ=UTC` and `--time-style=long-iso`.
 
+# ── Argument-parser spec ─────────────────────────────────────────────────────
+# Maps every short flag letter and every long-option name to a canonical key,
+# declares which options take an argument, and marks options that accumulate
+# (i.e. may be supplied multiple times and are collected into a list).
 @_ls_spec = {
   "aliases": {
     "a": "all",             "A": "almost_all",     "b": "escape",
@@ -34,11 +38,15 @@
   "long_optional_values": ["color", "hyperlink"],
   "accumulate": ["ignore", "hide"]
 }
+# Parse argv; split result into options map and positional list.
 @parsed = args.parse(os.argv(), @_ls_spec)
 @o = @parsed["options"]
 @paths = @parsed["positional"]
 @cwd = os.getcwd()
 
+# ── Procedures ───────────────────────────────────────────────────────────────
+
+# Default the path list to ["."] when the user supplies no arguments.
 @default_to_dot_if_empty = procedure(@paths_in, @paths_out) {
   @paths_out = @paths_in
   try {
@@ -47,8 +55,104 @@
   } fallback {}
 }
 
+# Return the classify indicator suffix for an entry:
+#   "/"  directories,  "@"  symlinks,  "*"  executables,  ""  everything else.
+# Only appends a suffix when @classify_flag is true (-F / --classify).
+@get_entry_suffix = procedure(@entry, @classify_flag, @suf_out) {
+  @suf_out = ""
+  try {
+    assert_eq(@classify_flag, true)
+    try {
+      assert_eq(@entry["is_dir"], true)
+      @suf_out = "/"
+    } fallback {
+      try {
+        assert_eq(@entry["is_symlink"], true)
+        @suf_out = "@"
+      } fallback {
+        try {
+          assert_eq(@entry["is_executable"], true)
+          @suf_out = "*"
+        } fallback {}
+      }
+    }
+  } fallback {}
+}
+
+# Build the size column string for one entry.
+# Block/char devices show "major, minor"; regular files show the byte count
+# (or a human-readable approximation when -h / --human-readable is set).
+# Directories always use binary units (never SI) for human-readable output.
+@get_size_string = procedure(@entry, @human_flag, @si_flag, @sz_out) {
+  @_ft = map.get(@entry, "file_type_char", "-")
+  @_is_dir = map.get(@entry, "is_dir", false)
+  try {
+    assert_eq(@_ft, "b")
+    @_maj = number.to_string(map.get(@entry, "major", 0))
+    @_min = number.to_string(map.get(@entry, "minor", 0))
+    @sz_out = "${@_maj}, ${@_min}"
+  } fallback {
+    try {
+      assert_eq(@_ft, "c")
+      @_maj = number.to_string(map.get(@entry, "major", 0))
+      @_min = number.to_string(map.get(@entry, "minor", 0))
+      @sz_out = "${@_maj}, ${@_min}"
+    } fallback {
+      @sz_out = number.to_string(map.get(@entry, "size", 0))
+      try {
+        assert_eq(@human_flag, true)
+        try {
+          assert_eq(@_is_dir, true)
+          @sz_out = math.human_bytes(map.get(@entry, "size", 0), false)
+        } fallback {
+          @sz_out = math.human_bytes(map.get(@entry, "size", 0), @si_flag)
+        }
+      } fallback {}
+    }
+  }
+}
+
+# Select the correct timestamp field (mtime by default; atime with -u; ctime
+# with -c) and format it according to the resolved time-style strftime string.
+@get_time_string = procedure(@entry, @time_access_flag, @time_change_flag, @fmt_str, @tstr_out) {
+  @_tsec = map.get(@entry, "mtime_sec", 0)
+  @_tnsec = map.get(@entry, "mtime_nsec", 0)
+  try {
+    assert_eq(@time_access_flag, true)
+    @_tsec = map.get(@entry, "atime_sec", 0)
+    @_tnsec = map.get(@entry, "atime_nsec", 0)
+  } fallback {}
+  try {
+    assert_eq(@time_change_flag, true)
+    @_tsec = map.get(@entry, "ctime_sec", 0)
+    @_tnsec = map.get(@entry, "ctime_nsec", 0)
+  } fallback {}
+  @tstr_out = time.format_local(@_tsec, @_tnsec, @fmt_str)
+}
+
+# Sum the raw 512-byte block counts for all entries in @sorted_list, convert
+# to 1 KiB blocks (divide by 2, round up), and print the "total N" line that
+# GNU ls emits before a directory listing.
+@print_total_blocks = procedure(@sorted_list, @human_flag) {
+  @_tb = 0
+  browse(@sorted_list, _ptb, _pee) {
+    @_tb = math.add(@_tb, map.get(_pee, "blocks", 0))
+  }
+  @_tk = number.ceil(math.div(@_tb, 2))
+  try {
+    assert_eq(@human_flag, true)
+    sys.echo("total ${math.human_bytes(math.mul(@_tk, 1024), false)}")
+  } fallback {
+    sys.echo("total ${@_tk}")
+  }
+}
+
+# ── Initialisation ───────────────────────────────────────────────────────────
+
+# Default to "." when no paths were given.
 @default_to_dot_if_empty.call(@paths, @paths)
 
+# Handle --help / --version / --dired before touching the filesystem.
 try {
   assert_eq(@o["help"], true)
   sys.echo("Usage: ls [OPTION]... [FILE]...")
@@ -67,6 +171,9 @@ try {
   sys.exit(2)
 } fallback {}
 
+# ── Flag extraction ───────────────────────────────────────────────────────────
+# Flatten the most-used option flags into simple boolean variables so the rest
+# of the script can reference them without repeated map lookups.
 @follow or= (@o["dereference_command_line"], @o["dereference"], false)
 
 @all or= (@o["all"], false)
@@ -84,6 +191,9 @@ try {
 @dir_only or= (@o["directory"], false)
 @stream or= (@o["stream"], false)
 
+# ── Output format: resolve -C / --format=vertical vs -1 ─────────────────────
+# -C (or --format=vertical) selects multi-column output; -1 overrides it back
+# to one-name-per-line mode.
 @fmt_C or= (@o["format_vertical"], false)
 try {
   assert_eq(@o["format"], "vertical")
@@ -94,6 +204,8 @@ try {
   @fmt_C = false
 } fallback {}
 
+# ── Terminal width ────────────────────────────────────────────────────────────
+# Default to 80 columns; override with -w / --width if the user supplied a value.
 @term_w = 80
 @ww or= (@o["width"], "")
 try {
@@ -105,6 +217,9 @@ try {
 @hides or= (@o["hide"], list.new())
 @ignores or= (@o["ignore"], list.new())
 
+# ── Sort key ──────────────────────────────────────────────────────────────────
+# -t sets time-sort; the specific time field (-c ctime, -u atime, else mtime).
+# --sort= overrides -t entirely.  Default is alphabetical ("name").
 @sort_key = "name"
 try {
   assert_eq(@o["time_sort_modified"], true)
@@ -121,6 +236,7 @@ try {
   }
 } fallback {}
 
+# --sort= flag overrides the -t time-sort selection above.
 @sort_key = match(map.get(@o, "sort", "")) {
   "size" => "size",
   "time" => "mtime_sec",
@@ -132,6 +248,9 @@ try {
 
 @unsorted or= (@o["unsorted"], false)
 
+# ── Time-style / strftime format ──────────────────────────────────────────────
+# Resolve --time-style (falling back to the TIME_STYLE env var, then "locale").
+# Map the chosen style name to a strftime format string used later.
 @time_style or= (@o["time_style"], "")
 try {
   assert_eq(string.len(string.trim(@time_style)), 0)
@@ -145,6 +264,9 @@ try {
   _ => "%b %e %H:%M"
 }
 
+# ── Multi-argument header flag ────────────────────────────────────────────────
+# When more than one path is listed, GNU ls prints "dirname:" before each
+# directory block.  Track that requirement here.
 @need_hdr = false
 try {
   assert_eq(list.len(@paths), 1)
@@ -152,15 +274,20 @@ try {
   @need_hdr = true
 }
 
+# ── Main processing loop ──────────────────────────────────────────────────────
+# @work is a FIFO queue of paths to process.  In recursive mode, subdirectory
+# paths are prepended so they are visited depth-first in the correct order.
 @work = @paths
 @rec_first = true
 
 loop {
+  # Terminate when the work queue is empty.
   try {
     assert_eq(list.len(@work), 0)
     terminate
   } fallback {}
 
+  # Dequeue the next path and read its filesystem metadata.
   @pth = list.get(@work, 0)
   @work = list.slice(@work, 1, list.len(@work))
 
@@ -168,6 +295,10 @@ loop {
   @is_dir = @meta["is_dir"]
   @from_dir_read = false
 
+  # Build the raw entry list:
+  #   - directory + -d → treat the directory itself as the sole entry
+  #   - directory (normal) → read its children via fs.read_dir_meta
+  #   - non-directory → the path metadata is the single entry
   @entries = []
   try {
     assert_eq(@is_dir, true)
@@ -182,6 +313,8 @@ loop {
     @entries = list.push(@entries, @meta)
   }
 
+  # -a / --all: prepend synthetic "." and ".." entries to the list.
+  # "." is the directory itself; ".." is its parent (omitted for the root).
   try {
     assert_eq(@all, true)
     assert_eq(@from_dir_read, true)
@@ -205,6 +338,13 @@ loop {
     @entries = @entries2
   } fallback {}
 
+  # ── Visibility filter ─────────────────────────────────────────────────────
+  # Apply the dot-file / backup hiding rules:
+  #   -d          → pass through unconditionally (already the sole entry)
+  #   -a / --all  → show everything including "." and ".."
+  #   -A          → show dotfiles but hide "." and ".."
+  #   (default)   → hide any name that starts with "."
+  #   -B          → additionally hide names ending with "~" (backup files)
   @filtered = []
   browse(@entries, _ei, ee) {
     @nm = @ee["name"]
@@ -249,6 +389,9 @@ loop {
     }
   }
 
+  # Apply --hide and --ignore glob patterns as a second filter pass.
+  # --hide patterns are applied first; entries that survive are then checked
+  # against --ignore patterns.  Both use fnmatch (shell-style globbing).
   @filtered2 = []
   browse(@filtered, _f2, ee) {
     @nm2 = @ee["name"]
@@ -278,6 +421,10 @@ loop {
   }
   @filtered = @filtered2
 
+  # ── Entry enrichment ──────────────────────────────────────────────────────
+  # Attach two synthetic fields to every entry before sorting:
+  #   "extension" — the last dot-separated component of the name (for -X sort)
+  #   "_skey"     — a pre-fetched copy of the active sort field value
   @prepared = []
   browse(@filtered, _pj, ee) {
     @nm = ee["name"]
@@ -294,6 +441,10 @@ loop {
     @prepared = list.push(@prepared, @ee2)
   }
 
+  # ── Sort direction ────────────────────────────────────────────────────────
+  # GNU ls sorts size and time fields largest/newest first by default (i.e.
+  # descending).  For those keys, invert the effective direction so that -r
+  # (--reverse) yields the opposite of the natural default.
   @sort_desc_default = false
   try {
     assert_eq(@sort_key, "size")
@@ -323,6 +474,11 @@ loop {
     }
   } fallback {}
 
+  # ── Sorting ───────────────────────────────────────────────────────────────
+  # -f / -U skip sorting entirely.  --sort=none is equivalent.
+  # Version sort (-v) uses a dedicated list.sort_version on just the names and
+  # then re-maps back to entries.  All other keys use list.sort_maps_by_key
+  # with an optional tie-breaker (name, or nanoseconds for time keys).
   @sorted = @prepared
   try {
     assert_eq(@unsorted, true)
@@ -382,6 +538,9 @@ loop {
     }
   }
 
+  # ── Recursive directory header ────────────────────────────────────────────
+  # In -R mode, print a blank separator line before each directory (except the
+  # very first), then emit the relative path followed by a colon.
   try {
     assert_eq(@recursive, true)
     assert_eq(@from_dir_read, true)
@@ -405,6 +564,10 @@ loop {
     sys.echo("${@hpre}:")
   } fallback {}
 
+  # ── Multi-argument directory header ──────────────────────────────────────
+  # When multiple path arguments were given and the current entry is a
+  # directory (not -d), print "path:" before its listing (non-recursive only;
+  # the recursive header above already handles that case).
   try {
     assert_eq(@need_hdr, true)
     assert_eq(@is_dir, true)
@@ -416,39 +579,24 @@ loop {
     }
   } fallback {}
 
+  # ── "total N" block-count line ────────────────────────────────────────────
+  # Printed before a directory's listing in -l mode, and also in short -s mode.
   try {
     assert_eq(@long, true)
     assert_eq(@from_dir_read, true)
-    @tblocks = 0
-    browse(@sorted, _tb, ee) {
-      @tblocks = math.add(@tblocks, map.get(ee, "blocks", 0))
-    }
-    @tk = number.ceil(math.div(@tblocks, 2))
-    try {
-      assert_eq(@human, true)
-      sys.echo("total ${math.human_bytes(math.mul(@tk, 1024), false)}")
-    } fallback {
-      sys.echo("total ${@tk}")
-    }
+    @print_total_blocks.call(@sorted, @human)
   } fallback {}
 
   try {
     assert_eq(@blocks, true)
     assert_eq(@long, false)
     assert_eq(@from_dir_read, true)
-    @tblocks = 0
-    browse(@sorted, _tbs, ee) {
-      @tblocks = math.add(@tblocks, map.get(ee, "blocks", 0))
-    }
-    @tk2 = number.ceil(math.div(@tblocks, 2))
-    try {
-      assert_eq(@human, true)
-      sys.echo("total ${math.human_bytes(math.mul(@tk2, 1024), false)}")
-    } fallback {
-      sys.echo("total ${@tk2}")
-    }
+    @print_total_blocks.call(@sorted, @human)
   } fallback {}
 
+  # ── Column-width pass (short formats: inode and blocks columns) ───────────
+  # In non-long mode, compute the widths of the optional inode and block-count
+  # prefix columns so they can be right-aligned in the output.
   @max_ino_s = 1
   try {
     assert_eq(@long, false)
@@ -470,6 +618,10 @@ loop {
     }
   } fallback {}
 
+  # ── Column-width pass (long format: all columns) ──────────────────────────
+  # Walk every entry in long (-l) mode and record the maximum rendered width of
+  # each column: inode, blocks, nlink, user, group, size, and timestamp.
+  # These maximums are used to right- or left-pad the columns for alignment.
   @max_ino = 0
   @max_blk = 0
   @max_nl = 0
@@ -514,47 +666,13 @@ loop {
         @max_g = math.max(@max_g, string.len(@ggm))
       } fallback {}
 
-      @ftm or= (ee["file_type_char"], "-")
-      @idm or= (ee["is_dir"], false)
-      try {
-        assert_eq(@ftm, "b")
-        @_maj = number.to_string(map.get(ee, "major", 0))
-        @_min = number.to_string(map.get(ee, "minor", 0))
-        @szm = "${@_maj}, ${@_min}"
-      } fallback {
-        try {
-          assert_eq(@ftm, "c")
-          @_maj = number.to_string(map.get(ee, "major", 0))
-          @_min = number.to_string(map.get(ee, "minor", 0))
-          @szm = "${@_maj}, ${@_min}"
-        } fallback {
-          @szm = number.to_string(map.get(ee, "size", 0))
-          try {
-            assert_eq(@human, true)
-            try {
-              assert_eq(@idm, true)
-              @szm = math.human_bytes(map.get(ee, "size", 0), false)
-            } fallback {
-              @szm = math.human_bytes(map.get(ee, "size", 0), @si)
-            }
-          } fallback {}
-        }
-      }
+      @_em = ee
+      @get_size_string.call(@_em, @human, @si, @szm)
       @max_sz = math.max(@max_sz, string.len(@szm))
 
-      @tsec_m = map.get(ee, "mtime_sec", 0)
-      @tnsec_m = map.get(ee, "mtime_nsec", 0)
-      try {
-        assert_eq(@o["time_access"], true)
-        @tsec_m = map.get(ee, "atime_sec", 0)
-        @tnsec_m = map.get(ee, "atime_nsec", 0)
-      } fallback {}
-      try {
-        assert_eq(@o["time_change"], true)
-        @tsec_m = map.get(ee, "ctime_sec", 0)
-        @tnsec_m = map.get(ee, "ctime_nsec", 0)
-      } fallback {}
-      @tstr_m = time.format_local(@tsec_m, @tnsec_m, @tfmt)
+      @_ta = map.get(@o, "time_access", false)
+      @_tc = map.get(@o, "time_change", false)
+      @get_time_string.call(@_em, @_ta, @_tc, @tfmt, @tstr_m)
       @max_tm = math.max(@max_tm, string.len(@tstr_m))
     }
   } fallback {}
@@ -576,82 +694,44 @@ loop {
     @max_blk = math.max(@max_blk, 1)
   } fallback {}
 
+  # ── Output ────────────────────────────────────────────────────────────────
+  # Three mutually exclusive output branches selected by flags:
+  #   1. -m (stream)     — names separated by ", " on a single line
+  #   2. -C (fmt_C)      — names arranged in columns sized to @term_w
+  #   3. default / -l    — one name per line; long format when -l is active
+
+  # Branch 1: stream mode (-m)
   try {
     assert_eq(@stream, true)
       @names_out = []
       browse(@sorted, _so, ee) {
         @nm = ee["name"]
-        @suf = ""
-        try {
-          assert_eq(@classify, true)
-          try {
-            assert_eq(ee["is_dir"], true)
-            @suf = "/"
-          } fallback {
-            try {
-              assert_eq(ee["is_symlink"], true)
-              @suf = "@"
-            } fallback {
-              try {
-                assert_eq(ee["is_executable"], true)
-                @suf = "*"
-              } fallback {}
-            }
-          }
-        } fallback {}
+        @_e = ee
+        @get_entry_suffix.call(@_e, @classify, @suf)
         @names_out = list.push(@names_out, "${@nm}${@suf}")
       }
       sys.echo(list.join(@names_out, ", "))
     } fallback {
+      # Branch 2: multi-column mode (-C)
       try {
         assert_eq(@fmt_C, true)
         @names_out2 = []
         browse(@sorted, _so2, ee) {
           @nm = ee["name"]
-          @suf = ""
-          try {
-            assert_eq(@classify, true)
-            try {
-              assert_eq(ee["is_dir"], true)
-              @suf = "/"
-            } fallback {
-              try {
-                assert_eq(ee["is_symlink"], true)
-                @suf = "@"
-              } fallback {
-                try {
-                  assert_eq(ee["is_executable"], true)
-                  @suf = "*"
-                } fallback {}
-              }
-            }
-          } fallback {}
+          @_e = ee
+          @get_entry_suffix.call(@_e, @classify, @suf)
           @names_out2 = list.push(@names_out2, "${@nm}${@suf}")
         }
         sys.echo(list.columnate(@names_out2, @term_w))
       } fallback {
+        # Branch 3: one name per line (default) or long format (-l)
         browse(@sorted, _si, ee) {
           @nm = ee["name"]
-          @suf = ""
-          try {
-            assert_eq(@classify, true)
-            try {
-              assert_eq(ee["is_dir"], true)
-              @suf = "/"
-            } fallback {
-              try {
-                assert_eq(ee["is_symlink"], true)
-                @suf = "@"
-              } fallback {
-                try {
-                  assert_eq(ee["is_executable"], true)
-                  @suf = "*"
-                } fallback {}
-              }
-            }
-          } fallback {}
+          @_e = ee
+          @get_entry_suffix.call(@_e, @classify, @suf)
 
           @namel = "${@nm}${@suf}"
+          # In long mode, append " -> target" for symbolic links.
           try {
             assert_eq(@long, true)
             try {
@@ -661,6 +741,7 @@ loop {
             } fallback {}
           } fallback {}
 
+          # Short format (not -l): optionally prefix with block count and inode.
           try {
             assert_eq(@long, false)
             @pre_ln = ""
@@ -679,6 +760,7 @@ loop {
             } fallback {}
             sys.echo("${@pre_ln}${@namel}")
           } fallback {
+            # Long format (-l): assemble all columns and emit one line.
             @ino_s = ""
             try {
               assert_eq(@inode_col, true)
@@ -713,50 +795,17 @@ loop {
 
             @uu_p = string.pad_end(@uu, @max_u, " ")
 
-            @ft or= (ee["file_type_char"], "-")
-            @id or= (ee["is_dir"], false)
-            try {
-              assert_eq(@ft, "b")
-              @_maj = number.to_string(map.get(ee, "major", 0))
-              @_min = number.to_string(map.get(ee, "minor", 0))
-              @sz_raw = "${@_maj}, ${@_min}"
-            } fallback {
-              try {
-                assert_eq(@ft, "c")
-                @_maj = number.to_string(map.get(ee, "major", 0))
-                @_min = number.to_string(map.get(ee, "minor", 0))
-                @sz_raw = "${@_maj}, ${@_min}"
-              } fallback {
-                @sz_raw = number.to_string(map.get(ee, "size", 0))
-                try {
-                  assert_eq(@human, true)
-                  try {
-                    assert_eq(@id, true)
-                    @sz_raw = math.human_bytes(map.get(ee, "size", 0), false)
-                  } fallback {
-                    @sz_raw = math.human_bytes(map.get(ee, "size", 0), @si)
-                  }
-                } fallback {}
-              }
-            }
+            # Format and right-align the size column.
+            @get_size_string.call(@_e, @human, @si, @sz_raw)
             @szcol = string.pad_start(@sz_raw, @max_sz, " ")
 
-            @tsec = map.get(ee, "mtime_sec", 0)
-            @tnsec = map.get(ee, "mtime_nsec", 0)
-            try {
-              assert_eq(@o["time_access"], true)
-              @tsec = map.get(ee, "atime_sec", 0)
-              @tnsec = map.get(ee, "atime_nsec", 0)
-            } fallback {}
-            try {
-              assert_eq(@o["time_change"], true)
-              @tsec = map.get(ee, "ctime_sec", 0)
-              @tnsec = map.get(ee, "ctime_nsec", 0)
-            } fallback {}
-
-            @tstr = time.format_local(@tsec, @tnsec, @tfmt)
+            # Format and left-align the timestamp column.
+            @_ta = map.get(@o, "time_access", false)
+            @_tc = map.get(@o, "time_change", false)
+            @get_time_string.call(@_e, @_ta, @_tc, @tfmt, @tstr)
             @t_p = string.pad_end(@tstr, @max_tm, " ")
 
+            # Compose the full output line (with or without the group column).
             try {
               assert_eq(@omit_group, false)
               @gg_p = string.pad_end(@gg, @max_g, " ")
@@ -770,6 +819,10 @@ loop {
       }
     }
 
+  # ── Recursive child-directory enqueue ─────────────────────────────────────
+  # In -R mode, collect all subdirectory paths found in the current listing
+  # (excluding "." and "..") and prepend them to the work queue so they are
+  # processed in the next iterations, maintaining depth-first order.
   try {
     assert_eq(@recursive, true)
     assert_eq(@dir_only, false)

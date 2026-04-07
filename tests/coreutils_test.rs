@@ -36,6 +36,9 @@ fn run_with_script_argv(source: &str, argv: Vec<String>) -> CorvoResult<RuntimeS
 }
 
 /// Read `coreutils/<name>.corvo` source at compile time.
+///
+/// `name` should include the `.corvo` extension (e.g., `"cp.corvo"`).
+/// Panics if the file cannot be read.
 fn corvo_script(name: &str) -> String {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let path = PathBuf::from(manifest).join("coreutils").join(name);
@@ -47,7 +50,10 @@ fn corvo_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_corvo"))
 }
 
-/// Helper: run `corvo <script> -- <args...>` and return (stdout, exit_code).
+/// Spawn `corvo coreutils/<script> -- <args...>` and return `(stdout, exit_code)`.
+///
+/// Uses the `corvo` binary compiled by Cargo via `CARGO_BIN_EXE_corvo` so that
+/// the full CLI path (argument forwarding through `--`) is exercised.
 fn run_corvo_script(script: &str, args: &[&str]) -> (String, i32) {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let script_path = PathBuf::from(manifest).join("coreutils").join(script);
@@ -66,6 +72,11 @@ fn run_corvo_script(script: &str, args: &[&str]) -> (String, i32) {
 // Helper: escape a path for embedding in a Corvo string literal.
 // ---------------------------------------------------------------------------
 
+/// Escape a path for embedding in a Corvo string literal.
+///
+/// Backslashes and double-quotes are escaped so the path can be safely
+/// interpolated inside a `"..."` Corvo string (needed on Windows or when paths
+/// contain special characters).
 fn escape_path(p: &std::path::Path) -> String {
     p.to_string_lossy()
         .replace('\\', "\\\\")

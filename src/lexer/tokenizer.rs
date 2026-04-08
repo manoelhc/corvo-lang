@@ -321,6 +321,7 @@ impl<'a> Lexer<'a> {
                         "fallback" => TokenType::Fallback,
                         "loop" => TokenType::Loop,
                         "browse" => TokenType::Browse,
+                        "async_browse" => TokenType::AsyncBrowse,
                         "terminate" => TokenType::Terminate,
                         "dont_panic" => TokenType::DontPanic,
                         "match" => TokenType::Match,
@@ -449,6 +450,10 @@ impl<'a> Lexer<'a> {
         let end = self.pos;
 
         let keyword = match name.as_str() {
+            "or" if !self.is_at_end() && self.peek() == '=' => {
+                self.advance(); // consume '='
+                TokenType::OrEqual
+            }
             "prep" => TokenType::Prep,
             "static" => TokenType::Static,
             "var" => TokenType::Var,
@@ -456,6 +461,7 @@ impl<'a> Lexer<'a> {
             "fallback" => TokenType::Fallback,
             "loop" => TokenType::Loop,
             "browse" => TokenType::Browse,
+            "async_browse" => TokenType::AsyncBrowse,
             "terminate" => TokenType::Terminate,
             "dont_panic" => TokenType::DontPanic,
             "match" => TokenType::Match,
@@ -465,6 +471,7 @@ impl<'a> Lexer<'a> {
             "assert_lt" => TokenType::AssertLt,
             "assert_match" => TokenType::AssertMatch,
             "procedure" => TokenType::Procedure,
+            "shared" => TokenType::Shared,
             "true" => TokenType::Boolean(true),
             "false" => TokenType::Boolean(false),
             _ => TokenType::Identifier(name),
@@ -494,6 +501,28 @@ impl<'a> Lexer<'a> {
                     TokenType::FatArrow
                 } else {
                     TokenType::Equals
+                }
+            }
+            '+' => {
+                if self.peek() == '+' {
+                    self.advance(); // consume second '+'
+                    TokenType::Increment
+                } else if self.peek() == '=' {
+                    self.advance(); // consume '='
+                    TokenType::PlusEqual
+                } else {
+                    TokenType::Illegal(ch.to_string())
+                }
+            }
+            '-' => {
+                if self.peek() == '-' {
+                    self.advance(); // consume second '-'
+                    TokenType::Decrement
+                } else if self.peek() == '=' {
+                    self.advance(); // consume '='
+                    TokenType::MinusEqual
+                } else {
+                    TokenType::Illegal(ch.to_string())
                 }
             }
             '/' => {

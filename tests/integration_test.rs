@@ -2791,3 +2791,410 @@ fn test_procedure_is_truthy() {
     let proc_val = state.var_get("p").unwrap();
     assert!(proc_val.is_truthy());
 }
+
+// --- Shorthand compound assignment operators ---
+
+#[test]
+fn test_at_var_increment() {
+    let state = run_with_state(
+        r#"
+        @counter = 5
+        @counter++
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("counter").unwrap(),
+        corvo_lang::type_system::Value::Number(6.0)
+    );
+}
+
+#[test]
+fn test_at_var_decrement() {
+    let state = run_with_state(
+        r#"
+        @counter = 10
+        @counter--
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("counter").unwrap(),
+        corvo_lang::type_system::Value::Number(9.0)
+    );
+}
+
+#[test]
+fn test_at_var_add_assign_number() {
+    let state = run_with_state(
+        r#"
+        @n = 3
+        @n += 7
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("n").unwrap(),
+        corvo_lang::type_system::Value::Number(10.0)
+    );
+}
+
+#[test]
+fn test_at_var_sub_assign_number() {
+    let state = run_with_state(
+        r#"
+        @n = 20
+        @n -= 8
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("n").unwrap(),
+        corvo_lang::type_system::Value::Number(12.0)
+    );
+}
+
+#[test]
+fn test_at_var_add_assign_string() {
+    let state = run_with_state(
+        r#"
+        @s = "hello"
+        @s += " world"
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("s").unwrap(),
+        corvo_lang::type_system::Value::String("hello world".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_sub_assign_string_removes_all_occurrences() {
+    let state = run_with_state(
+        r#"
+        @s = "foo bar foo baz foo"
+        @s -= "foo"
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("s").unwrap(),
+        corvo_lang::type_system::Value::String(" bar  baz ".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_increment_multiple_times() {
+    let state = run_with_state(
+        r#"
+        @i = 0
+        @i++
+        @i++
+        @i++
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("i").unwrap(),
+        corvo_lang::type_system::Value::Number(3.0)
+    );
+}
+
+#[test]
+fn test_at_var_add_assign_type_mismatch_errors() {
+    let result = run_with_state(
+        r#"
+        @n = 5
+        @n += "hello"
+        "#,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_at_var_sub_assign_type_mismatch_errors() {
+    let result = run_with_state(
+        r#"
+        @s = "hello"
+        @s -= 3
+        "#,
+    );
+    assert!(result.is_err());
+}
+
+// --- or= shorthand assignment ---
+
+#[test]
+fn test_at_var_or_assign_picks_first_truthy() {
+    let state = run_with_state(
+        r#"
+        @x or= (false, false, false, true)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::Boolean(true)
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_picks_first_truthy_value() {
+    let state = run_with_state(
+        r#"
+        @x or= (false, 0, "hello", "world")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::String("hello".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_skips_error_candidates() {
+    let state = run_with_state(
+        r#"
+        @config = map.new()
+        @host or= (@config["host"], "localhost")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("host").unwrap(),
+        corvo_lang::type_system::Value::String("localhost".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_skips_falsy_then_uses_truthy_string() {
+    let state = run_with_state(
+        r#"
+        @x or= (false, "", "found")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::String("found".to_string())
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_single_truthy_candidate() {
+    let state = run_with_state(
+        r#"
+        @x or= (42)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("x").unwrap(),
+        corvo_lang::type_system::Value::Number(42.0)
+    );
+}
+
+#[test]
+fn test_at_var_or_assign_all_falsy_errors() {
+    let result = run_with_state(
+        r#"
+        @var or= (false, 0, "")
+        "#,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_at_var_or_assign_overwrites_existing_var() {
+    let state = run_with_state(
+        r#"
+        @result = "old"
+        @result or= (false, "new")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("result").unwrap(),
+        corvo_lang::type_system::Value::String("new".to_string())
+    );
+}
+
+// --- async_browse Tests ---
+
+#[test]
+fn test_async_browse_basic_accumulation() {
+    // Each thread appends an item to a shared list.  After joining, the list
+    // must contain exactly all three original values (order may vary).
+    let state = run_with_state(
+        r#"
+        @items = [10, 20, 30]
+        @results = list.new()
+
+        @append = procedure(@item, @acc) {
+            @acc = list.push(@acc, @item)
+        }
+
+        async_browse(@items, @append, @item, shared @results)
+        @results = list.sort(@results)
+        "#,
+    )
+    .unwrap();
+
+    let result = state.var_get("results").unwrap();
+    let expected = corvo_lang::type_system::Value::List(vec![
+        corvo_lang::type_system::Value::Number(10.0),
+        corvo_lang::type_system::Value::Number(20.0),
+        corvo_lang::type_system::Value::Number(30.0),
+    ]);
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn test_async_browse_item_param_is_per_thread() {
+    // Each thread squares its own item independently and accumulates the result.
+    let state = run_with_state(
+        r#"
+        @nums = [2, 3, 4]
+        @squares = list.new()
+
+        @square_and_collect = procedure(@n, @acc) {
+            @sq = math.mul(@n, @n)
+            @acc = list.push(@acc, @sq)
+        }
+
+        async_browse(@nums, @square_and_collect, @n, shared @squares)
+        "#,
+    )
+    .unwrap();
+
+    // All three squares must be present; ordering is non-deterministic.
+    let result = state.var_get("squares").unwrap();
+    let items = result.as_list().expect("expected a list");
+    assert_eq!(items.len(), 3);
+    assert!(items.contains(&corvo_lang::type_system::Value::Number(4.0)));
+    assert!(items.contains(&corvo_lang::type_system::Value::Number(9.0)));
+    assert!(items.contains(&corvo_lang::type_system::Value::Number(16.0)));
+}
+
+#[test]
+fn test_async_browse_no_shared_vars() {
+    // async_browse with no shared variables: each thread works independently.
+    // The side-effect is echo; we just verify no error is returned.
+    let result = run_with_state(
+        r#"
+        @items = ["a", "b", "c"]
+        @noop = procedure(@x) {
+            sys.echo(@x)
+        }
+        async_browse(@items, @noop, @x)
+        "#,
+    );
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_async_browse_empty_list() {
+    // An empty list produces no threads and leaves the shared variable unchanged.
+    let state = run_with_state(
+        r#"
+        @empty = list.new()
+        @out = "unchanged"
+
+        @noop = procedure(@x, @acc) {
+            @acc = "changed"
+        }
+
+        async_browse(@empty, @noop, @x, shared @out)
+        "#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        state.var_get("out").unwrap(),
+        corvo_lang::type_system::Value::String("unchanged".to_string())
+    );
+}
+
+#[test]
+fn test_async_browse_parse_error_missing_proc_at() {
+    // Omitting '@' before the procedure variable should cause a parse error.
+    let result = run_with_state(
+        r#"
+        @items = [1]
+        @proc = procedure(@x) { sys.echo(@x) }
+        async_browse(@items, proc, @x)
+        "#,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_async_browse_parse_error_missing_shared_keyword() {
+    // Omitting 'shared' before a shared variable argument should cause a parse error.
+    let result = run_with_state(
+        r#"
+        @items = [1]
+        @acc = list.new()
+        @proc = procedure(@x, @out) { @out = list.push(@out, @x) }
+        async_browse(@items, @proc, @x, @acc)
+        "#,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_async_browse_wrong_param_count() {
+    // Procedure has 1 param but async_browse expects 2 (item + 1 shared var).
+    let result = run_with_state(
+        r#"
+        @items = [1, 2]
+        @acc = list.new()
+        @wrong_proc = procedure(@x) { @x = math.add(@x, 1) }
+        async_browse(@items, @wrong_proc, @x, shared @acc)
+        "#,
+    );
+    assert!(result.is_err());
+    let msg = format!("{}", result.unwrap_err());
+    assert!(msg.contains("parameter"));
+}
+
+#[test]
+fn test_async_browse_multiple_shared_vars() {
+    // Each thread appends its item to two different shared lists.
+    let state = run_with_state(
+        r#"
+        @items = [1, 2, 3]
+        @evens = list.new()
+        @odds = list.new()
+
+        @classify = procedure(@n, @ev, @od) {
+            @remainder = math.mod(@n, 2)
+            try {
+                assert_eq(@remainder, 0)
+                @ev = list.push(@ev, @n)
+            } fallback {
+                @od = list.push(@od, @n)
+            }
+        }
+
+        async_browse(@items, @classify, @n, shared @evens, shared @odds)
+        @evens = list.sort(@evens)
+        @odds = list.sort(@odds)
+        "#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        state.var_get("evens").unwrap(),
+        corvo_lang::type_system::Value::List(vec![corvo_lang::type_system::Value::Number(2.0)])
+    );
+    assert_eq!(
+        state.var_get("odds").unwrap(),
+        corvo_lang::type_system::Value::List(vec![
+            corvo_lang::type_system::Value::Number(1.0),
+            corvo_lang::type_system::Value::Number(3.0),
+        ])
+    );
+}

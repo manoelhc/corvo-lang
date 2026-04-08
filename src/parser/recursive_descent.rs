@@ -62,6 +62,7 @@ impl Parser {
             TokenType::Try => self.parse_try_block()?,
             TokenType::Loop => self.parse_loop()?,
             TokenType::Browse => self.parse_browse()?,
+            TokenType::AsyncBrowse => self.parse_async_browse()?,
             TokenType::Terminate => self.parse_terminate()?,
             TokenType::DontPanic => self.parse_dont_panic()?,
             TokenType::AssertEq
@@ -72,25 +73,64 @@ impl Parser {
             TokenType::At => {
                 // @name = value       → VarSet shortcut
                 // @name[index] = val  → VarIndexSet shortcut
+                // @name++             → VarAddAssign shortcut (increment by 1)
+                // @name--             → VarSubAssign shortcut (decrement by 1)
+                // @name += expr       → VarAddAssign shortcut
+                // @name -= expr       → VarSubAssign shortcut
                 // @name               → ExprStmt (VarGet shortcut)
-                let is_simple_assignment = matches!(
+                let next_is_ident = matches!(
                     self.tokens.get(self.current + 1).map(|t| &t.token_type),
                     Some(TokenType::Identifier(_))
-                ) && matches!(
-                    self.tokens.get(self.current + 2).map(|t| &t.token_type),
-                    Some(TokenType::Equals)
                 );
-                let is_index_assignment = matches!(
-                    self.tokens.get(self.current + 1).map(|t| &t.token_type),
-                    Some(TokenType::Identifier(_))
-                ) && matches!(
-                    self.tokens.get(self.current + 2).map(|t| &t.token_type),
-                    Some(TokenType::LeftBracket)
-                );
+                let is_simple_assignment = next_is_ident
+                    && matches!(
+                        self.tokens.get(self.current + 2).map(|t| &t.token_type),
+                        Some(TokenType::Equals)
+                    );
+                let is_index_assignment = next_is_ident
+                    && matches!(
+                        self.tokens.get(self.current + 2).map(|t| &t.token_type),
+                        Some(TokenType::LeftBracket)
+                    );
+                let is_increment = next_is_ident
+                    && matches!(
+                        self.tokens.get(self.current + 2).map(|t| &t.token_type),
+                        Some(TokenType::Increment)
+                    );
+                let is_decrement = next_is_ident
+                    && matches!(
+                        self.tokens.get(self.current + 2).map(|t| &t.token_type),
+                        Some(TokenType::Decrement)
+                    );
+                let is_add_assign = next_is_ident
+                    && matches!(
+                        self.tokens.get(self.current + 2).map(|t| &t.token_type),
+                        Some(TokenType::PlusEqual)
+                    );
+                let is_sub_assign = next_is_ident
+                    && matches!(
+                        self.tokens.get(self.current + 2).map(|t| &t.token_type),
+                        Some(TokenType::MinusEqual)
+                    );
+                let is_or_assign = next_is_ident
+                    && matches!(
+                        self.tokens.get(self.current + 2).map(|t| &t.token_type),
+                        Some(TokenType::OrEqual)
+                    );
                 if is_simple_assignment {
                     self.parse_at_var_set()?
                 } else if is_index_assignment {
                     self.parse_at_index_set_or_expr()?
+                } else if is_increment {
+                    self.parse_at_var_increment()?
+                } else if is_decrement {
+                    self.parse_at_var_decrement()?
+                } else if is_add_assign {
+                    self.parse_at_var_add_assign()?
+                } else if is_sub_assign {
+                    self.parse_at_var_sub_assign()?
+                } else if is_or_assign {
+                    self.parse_at_var_or_assign()?
                 } else {
                     self.parse_expr_statement()?
                 }
@@ -223,6 +263,75 @@ impl Parser {
         Ok(Stmt::Terminate)
     }
 
+    fn parse_async_browse(&mut self) -> CorvoResult<Stmt> {
+        self.advance(); // consume 'async_browse'
+        self.consume(TokenType::LeftParen, "Expected '(' after 'async_browse'")?;
+
+        // First argument: the list expression
+        let list = self.parse_expression()?;
+        self.consume(TokenType::Comma, "Expected ',' after list expression")?;
+
+        // Second argument: @proc_var — the procedure variable
+        self.consume(
+            TokenType::At,
+            "Expected '@' before procedure variable name in async_browse",
+        )?;
+        let proc_name = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => {
+                return Err(self.error("Expected procedure variable name after '@' in async_browse"))
+            }
+        };
+        self.advance(); // consume identifier
+        self.consume(TokenType::Comma, "Expected ',' after procedure variable")?;
+
+        // Third argument: @item_param — per-item binding name
+        self.consume(
+            TokenType::At,
+            "Expected '@' before item binding name in async_browse",
+        )?;
+        let item_param = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected item binding name after '@' in async_browse")),
+        };
+        self.advance(); // consume identifier
+
+        // Remaining arguments: (,shared @varname)*
+        let mut shared_vars = Vec::new();
+        while self.match_token(TokenType::Comma) {
+            self.consume(
+                TokenType::Shared,
+                "Expected 'shared' keyword before shared variable in async_browse",
+            )?;
+            self.consume(
+                TokenType::At,
+                "Expected '@' before shared variable name in async_browse",
+            )?;
+            let name = match &self.peek().token_type {
+                TokenType::Identifier(s) => s.clone(),
+                _ => {
+                    return Err(
+                        self.error("Expected shared variable name after '@' in async_browse")
+                    )
+                }
+            };
+            self.advance(); // consume identifier
+            shared_vars.push(name);
+        }
+
+        self.consume(
+            TokenType::RightParen,
+            "Expected ')' to close async_browse arguments",
+        )?;
+
+        Ok(Stmt::AsyncBrowse {
+            list,
+            proc_name,
+            item_param,
+            shared_vars,
+        })
+    }
+
     fn parse_dont_panic(&mut self) -> CorvoResult<Stmt> {
         self.advance(); // consume 'dont_panic'
         self.consume(TokenType::LeftBrace, "Expected '{' after 'dont_panic'")?;
@@ -240,6 +349,85 @@ impl Parser {
         self.consume(TokenType::Equals, "Expected '=' after variable name")?;
         let value = self.parse_expression()?;
         Ok(Stmt::VarSet { name, value })
+    }
+
+    fn parse_at_var_increment(&mut self) -> CorvoResult<Stmt> {
+        self.advance(); // consume '@'
+        let name = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected variable name after '@'")),
+        };
+        self.advance(); // consume identifier
+        self.advance(); // consume '++'
+        Ok(Stmt::VarAddAssign {
+            name,
+            value: Expr::Literal {
+                value: Value::Number(1.0),
+            },
+        })
+    }
+
+    fn parse_at_var_decrement(&mut self) -> CorvoResult<Stmt> {
+        self.advance(); // consume '@'
+        let name = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected variable name after '@'")),
+        };
+        self.advance(); // consume identifier
+        self.advance(); // consume '--'
+        Ok(Stmt::VarSubAssign {
+            name,
+            value: Expr::Literal {
+                value: Value::Number(1.0),
+            },
+        })
+    }
+
+    fn parse_at_var_add_assign(&mut self) -> CorvoResult<Stmt> {
+        self.advance(); // consume '@'
+        let name = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected variable name after '@'")),
+        };
+        self.advance(); // consume identifier
+        self.advance(); // consume '+='
+        let value = self.parse_expression()?;
+        Ok(Stmt::VarAddAssign { name, value })
+    }
+
+    fn parse_at_var_sub_assign(&mut self) -> CorvoResult<Stmt> {
+        self.advance(); // consume '@'
+        let name = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected variable name after '@'")),
+        };
+        self.advance(); // consume identifier
+        self.advance(); // consume '-='
+        let value = self.parse_expression()?;
+        Ok(Stmt::VarSubAssign { name, value })
+    }
+
+    fn parse_at_var_or_assign(&mut self) -> CorvoResult<Stmt> {
+        self.advance(); // consume '@'
+        let name = match &self.peek().token_type {
+            TokenType::Identifier(s) => s.clone(),
+            _ => return Err(self.error("Expected variable name after '@'")),
+        };
+        self.advance(); // consume identifier
+        self.advance(); // consume 'or='
+        self.consume(TokenType::LeftParen, "Expected '(' after 'or='")?;
+        let mut candidates = Vec::new();
+        if !self.check(TokenType::RightParen) {
+            candidates.push(self.parse_expression()?);
+            while self.match_token(TokenType::Comma) {
+                candidates.push(self.parse_expression()?);
+            }
+        }
+        self.consume(TokenType::RightParen, "Expected ')' after candidates")?;
+        if candidates.is_empty() {
+            return Err(self.error("'or=' requires at least one candidate"));
+        }
+        Ok(Stmt::VarOrAssign { name, candidates })
     }
 
     fn parse_at_index_set_or_expr(&mut self) -> CorvoResult<Stmt> {

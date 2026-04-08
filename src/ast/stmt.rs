@@ -23,6 +23,18 @@ pub enum Stmt {
         index: Expr,
         value: Expr,
     },
+    VarAddAssign {
+        name: String,
+        value: Expr,
+    },
+    VarSubAssign {
+        name: String,
+        value: Expr,
+    },
+    VarOrAssign {
+        name: String,
+        candidates: Vec<Expr>,
+    },
     ExprStmt {
         expr: Expr,
     },
@@ -46,6 +58,12 @@ pub enum Stmt {
     },
     DontPanic {
         body: Vec<Stmt>,
+    },
+    AsyncBrowse {
+        list: Expr,
+        proc_name: String,
+        item_param: String,
+        shared_vars: Vec<String>,
     },
 }
 

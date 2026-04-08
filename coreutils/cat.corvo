@@ -69,7 +69,7 @@ try {
 
 # ── Flag extraction ───────────────────────────────────────────────────────────
 @_number      = false
-@_num_nonblank = false
+@_number_nonblank = false
 @_squeeze     = false
 @_show_ends   = false
 @_show_tabs   = false
@@ -78,14 +78,14 @@ try {
   assert_eq(@skip_main, true)
 } fallback {
   @_number      = map.get(@o, "number",        false)
-  @_num_nonblank = map.get(@o, "number_nonblank", false)
+  @_number_nonblank = map.get(@o, "number_nonblank", false)
   @_squeeze     = map.get(@o, "squeeze_blank", false)
   @_show_ends   = map.get(@o, "show_ends",     false)
   @_show_tabs   = map.get(@o, "show_tabs",     false)
 
   # -b overrides -n
   try {
-    assert_eq(@_num_nonblank, true)
+    assert_eq(@_number_nonblank, true)
     @_number = false
   } fallback {}
 
@@ -193,7 +193,7 @@ try {
         assert_eq(string.is_empty(list.last(@_lines)), true)
         @_lines = list.slice(@_lines, 0, math.sub(list.len(@_lines), 1))
       } fallback {}
-      @_print_lines.call(@_lines, @_number, @_num_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
+      @_print_lines.call(@_lines, @_number, @_number_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
     } fallback {
       # Fallback: read line by line (EOF signalled by empty read)
       loop {
@@ -203,7 +203,7 @@ try {
           terminate
         } fallback {}
         @_sl = [@_line]
-        @_print_lines.call(@_sl, @_number, @_num_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
+        @_print_lines.call(@_sl, @_number, @_number_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
       }
     }
   } fallback {
@@ -225,7 +225,7 @@ try {
             assert_eq(string.is_empty(list.last(@_lines)), true)
             @_lines = list.slice(@_lines, 0, math.sub(list.len(@_lines), 1))
           } fallback {}
-          @_print_lines.call(@_lines, @_number, @_num_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
+          @_print_lines.call(@_lines, @_number, @_number_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
         } fallback {
           loop {
             @_line = sys.read_line("")
@@ -234,7 +234,7 @@ try {
               terminate
             } fallback {}
             @_sl = [@_line]
-            @_print_lines.call(@_sl, @_number, @_num_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
+            @_print_lines.call(@_sl, @_number, @_number_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
           }
         }
       } fallback {
@@ -247,7 +247,7 @@ try {
             assert_eq(string.is_empty(list.last(@_lines)), true)
             @_lines = list.slice(@_lines, 0, math.sub(list.len(@_lines), 1))
           } fallback {}
-          @_print_lines.call(@_lines, @_number, @_num_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
+          @_print_lines.call(@_lines, @_number, @_number_nonblank, @_squeeze, @_show_ends, @_show_tabs, @_lnum, @_prev_blank)
         } fallback {
           sys.echo("cat: ${@_fname}: No such file or directory")
           @exit_code = 1

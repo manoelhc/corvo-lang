@@ -170,7 +170,6 @@ try {
   } fallback {}
 
   # Walk lines, echoing each in full until the byte budget is reached.
-  # Note: string.split("x","") yields ["","x",""], so slice from index 1.
   @_written = 0
   @_lines   = string.split(@content, "\n")
   browse(@_lines, @_li, @_ln) {
@@ -184,6 +183,8 @@ try {
         @_remaining = math.sub(@_take, @_written)
         try {
           assert_gt(@_remaining, 0)
+          # string.split(str, "") yields ["", c1, c2, ..., ""], so skip
+          # the leading empty element at index 0 by slicing from index 1.
           @_chars   = string.split(@_ln, "")
           @_partial = list.join(list.slice(@_chars, 1, math.add(@_remaining, 1)), "")
           sys.echo(@_partial)

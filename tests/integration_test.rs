@@ -191,6 +191,69 @@ fn test_list_new() {
 }
 
 #[test]
+fn test_map_set_shorthand() {
+    let state = run_with_state(
+        r#"
+        @m = map.new()
+        @m.set("name", "corvo")
+        @m.set("version", "1.0")
+        @name = @m.get("name")
+        @ver = @m.get("version")
+        @count = map.len(@m)
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("name").unwrap(),
+        corvo_lang::type_system::Value::String("corvo".to_string())
+    );
+    assert_eq!(
+        state.var_get("ver").unwrap(),
+        corvo_lang::type_system::Value::String("1.0".to_string())
+    );
+    assert_eq!(
+        state.var_get("count").unwrap(),
+        corvo_lang::type_system::Value::Number(2.0)
+    );
+}
+
+#[test]
+fn test_map_get_shorthand_with_default() {
+    let state = run_with_state(
+        r#"
+        @m = {"key": "hello"}
+        @found = @m.get("key")
+        @missing = @m.get("other", "default_val")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("found").unwrap(),
+        corvo_lang::type_system::Value::String("hello".to_string())
+    );
+    assert_eq!(
+        state.var_get("missing").unwrap(),
+        corvo_lang::type_system::Value::String("default_val".to_string())
+    );
+}
+
+#[test]
+fn test_map_set_shorthand_overwrites() {
+    let state = run_with_state(
+        r#"
+        @m = {"x": 1}
+        @m.set("x", 99)
+        @val = @m.get("x")
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        state.var_get("val").unwrap(),
+        corvo_lang::type_system::Value::Number(99.0)
+    );
+}
+
+#[test]
 fn test_map_new() {
     let state = run_with_state(
         r#"

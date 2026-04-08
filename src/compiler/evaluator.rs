@@ -147,7 +147,6 @@ impl Evaluator {
                 )))
             }
             Stmt::ExprStmt { expr } => {
-                // Intercept procedure.call(...) so we can run the body with &mut state.
                 if let Expr::MethodCall {
                     target,
                     method,
@@ -155,10 +154,34 @@ impl Evaluator {
                     ..
                 } = expr
                 {
+                    // Intercept procedure.call(...) so we can run the body with &mut state.
                     if method == "call" {
                         let target_val = self.eval_expr(target, state)?;
                         if let Value::Procedure(proc) = target_val {
                             return self.exec_procedure_call(&proc, args, state);
+                        }
+                    }
+                    // @map_var.set(key, value) → mutate the variable in place,
+                    // equivalent to @map_var["key"] = value.
+                    if method == "set" {
+                        if let Expr::VarGet { name } = target.as_ref() {
+                            let target_val = self.eval_expr(target, state)?;
+                            if matches!(target_val, Value::Map(_)) {
+                                let evaluated_args = args
+                                    .iter()
+                                    .map(|a| self.eval_expr(a, state))
+                                    .collect::<CorvoResult<Vec<_>>>()?;
+                                let mut all_args = vec![target_val];
+                                all_args.extend(evaluated_args);
+                                let new_map = standard_lib::call(
+                                    "map.set",
+                                    &all_args,
+                                    &std::collections::HashMap::new(),
+                                    state,
+                                )?;
+                                state.var_set(name.clone(), new_map);
+                                return Ok(());
+                            }
                         }
                     }
                 }

@@ -42,6 +42,14 @@ sys.echo("Entry count: ${list.len(@entries)}")
 @person = map.set(@person, "email", "alice@example.com")
 sys.echo("After set 'email': ${map.get(@person, "email")}")
 
+@section.call("=== .set shorthand (mutates variable in place) ===")
+@person.set("phone", "555-1234")
+sys.echo("After .set 'phone': ${@person.get("phone")}")
+
+@section.call("=== .get shorthand ===")
+sys.echo("name via .get: ${@person.get("name")}")
+sys.echo("missing via .get with default: ${@person.get("missing", "n/a")}")
+
 @section.call("=== @var[key] = val (index shorthand) ===")
 @person["city"] = "Osaka"
 sys.echo("city after shorthand set: ${@person["city"]}")

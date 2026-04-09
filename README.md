@@ -9,7 +9,7 @@ Corvo is a modern scripting language that compiles to standalone Rust binaries. 
 ```corvo
 # Fetch an API, parse JSON, write to disk — no imports, no setup, just script
 @res  = http.get(url: "https://api.example.com/data")
-@data = json.parse(map.get(@res, "response_body"))
+@data = json.parse(@res["response_body"])
 fs.write("/tmp/output.json", json.stringify(@data))
 sys.echo("Written ${map.len(@data)} entries")
 ```
@@ -113,7 +113,7 @@ sys.echo(@out)   # Hello, World!
 
 @fetch = procedure(@url, @acc) {
     @res = http.get(url: @url)
-    @acc = list.push(@acc, map.get(@res, "status_code"))
+    @acc = list.push(@acc, @res["status_code"])
 }
 
 async_browse(@urls, @fetch, @url, shared @results)
@@ -144,8 +144,8 @@ prep {
     # Feature flags fetched once at compile time, encrypted into the binary
     @ff = http.get(string.concat(static.get("API_BASE"), "/feature-flags"))
     try {
-        assert_eq(map.get(@ff, "status_code"), 200)
-        static.set("FLAGS", json.parse(map.get(@ff, "response_body")))
+        assert_eq(@ff["status_code"], 200)
+        static.set("FLAGS", json.parse(@ff["response_body"]))
     } fallback {
         static.set("FLAGS", {"dark_mode": false, "beta_api": false})
     }
@@ -254,23 +254,23 @@ sys.echo("Sum 1..10 = ${@sum}")
 
 ### Browse (iteration)
 
-Iterate lists or maps with bound key/value variables (accessed with `$`):
+Iterate lists or maps with bound key/value variables (accessed with `@`):
 
 ```corvo
 @scores = {"alice": 95, "bob": 87, "carol": 92}
 
-browse(@scores, name, score) {
-    sys.echo("${$name}: ${$score}")
+browse(@scores, @name, @score) {
+    sys.echo("${@name}: ${@score}")
 }
 ```
 
 ```corvo
 @files = fs.list_dir("/var/log")
 
-browse(@files, idx, fname) {
+browse(@files, @idx, @fname) {
     try {
-        assert_match("\.log$", $fname)
-        sys.echo("Log file: ${$fname}")
+        assert_match("\.log$", @fname)
+        sys.echo("Log file: ${@fname}")
     } fallback {}
 }
 ```
@@ -293,7 +293,7 @@ No shell injection: pass a list of strings, get `{stdout, stderr, code}` back:
 
 ```corvo
 @result = sys.exec(["git", "log", "--oneline", "-5"])
-sys.echo(map.get(@result, "stdout"))
+sys.echo(@result["stdout"])
 
 # Timeout, working directory, env vars
 sys.exec(["make", "build"], cwd: "/src", env: {"CC": "clang"}, timeout: 60, check: true)
@@ -314,7 +314,7 @@ sys.exec(["make", "build"], cwd: "/src", env: {"CC": "clang"}, timeout: 60, chec
 @check = procedure(@url, @out) {
     try {
         @res = http.get(url: @url)
-        @line = string.concat(@url, string.concat(" → ", number.to_string(map.get(@res, "status_code"))))
+        @line = string.concat(@url, string.concat(" → ", number.to_string(@res["status_code"])))
         @out = list.push(@out, @line)
     } fallback {
         @out = list.push(@out, string.concat(@url, " → ERROR"))
@@ -323,8 +323,8 @@ sys.exec(["make", "build"], cwd: "/src", env: {"CC": "clang"}, timeout: 60, chec
 
 async_browse(@endpoints, @check, @url, shared @statuses)
 
-browse(@statuses, i, line) {
-    sys.echo($line)
+browse(@statuses, @i, @line) {
+    sys.echo(@line)
 }
 ```
 
@@ -364,10 +364,10 @@ try {
 @lines  = string.split(fs.read("access.log"), "\n")
 @errors = list.new()
 
-browse(@lines, _, line) {
+browse(@lines, @_, @line) {
     try {
-        assert_match("ERROR", $line)
-        @errors = list.push(@errors, $line)
+        assert_match("ERROR", @line)
+        @errors = list.push(@errors, @line)
     } fallback {}
 }
 

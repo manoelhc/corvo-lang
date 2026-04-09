@@ -347,6 +347,23 @@ Functions are grouped by module. Parameter names in `[brackets]` are optional.
 | `map.is_empty` | `m: map` | `bool` | Check if the map has zero entries |
 | `map.merge` | `m: map, other: map` | `map` | Merge two maps (keys in `other` overwrite) |
 
+### Map variable shorthands
+
+When a map is stored in a variable, `.get` and `.set` can be called directly on it:
+
+| Shorthand | Equivalent | Notes |
+|---|---|---|
+| `@m.get("key")` | `map.get(@m, "key")` | Usable in any expression context |
+| `@m.get("key", default)` | `map.get(@m, "key", default)` | Returns `default` when key is absent |
+| `@m.set("key", value)` | `@m["key"] = value` | Statement only — updates `@m` in place |
+
+```
+@m = map.new()
+@m.set("name", "corvo")          # mutates @m in place
+@n = @m.get("name")              # "corvo"
+@x = @m.get("missing", "n/a")   # "n/a"
+```
+
 **Example file:** [`examples/map_methods.corvo`](examples/map_methods.corvo)
 
 ---
@@ -462,7 +479,7 @@ loop {
 }
 
 # Iteration over a list or map
-browse(var.get("items"), idx, item) {
+browse(@items, @idx, @item) {
     sys.echo("${@idx}: ${@item}")
 }
 

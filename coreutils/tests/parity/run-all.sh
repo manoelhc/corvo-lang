@@ -22,6 +22,30 @@ cd /fixtures
 . "$TESTS_DIR/parity/tail.sh"
 # shellcheck source=cp.sh
 . "$TESTS_DIR/parity/cp.sh"
+# shellcheck source=rm.sh
+. "$TESTS_DIR/parity/rm.sh"
+# shellcheck source=rmdir.sh
+. "$TESTS_DIR/parity/rmdir.sh"
+# shellcheck source=mkdir.sh
+. "$TESTS_DIR/parity/mkdir.sh"
+# shellcheck source=wc.sh
+. "$TESTS_DIR/parity/wc.sh"
+# shellcheck source=cut.sh
+. "$TESTS_DIR/parity/cut.sh"
+# shellcheck source=date.sh
+. "$TESTS_DIR/parity/date.sh"
+# shellcheck source=uptime.sh
+. "$TESTS_DIR/parity/uptime.sh"
+# shellcheck source=b2sum.sh
+. "$TESTS_DIR/parity/b2sum.sh"
+# shellcheck source=base32.sh
+. "$TESTS_DIR/parity/base32.sh"
+# shellcheck source=base64.sh
+. "$TESTS_DIR/parity/base64.sh"
+# shellcheck source=basenc.sh
+. "$TESTS_DIR/parity/basenc.sh"
+# shellcheck source=cksum.sh
+. "$TESTS_DIR/parity/cksum.sh"
 
 echo ""
 echo "=================================================="

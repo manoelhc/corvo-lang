@@ -11,6 +11,108 @@ fn cmp_values_for_sort(a: &Value, b: &Value) -> Ordering {
     }
 }
 
+/// Base32-family encode using a 32-byte alphabet slice.
+fn base32_encode_alphabet(input: &[u8], alphabet: &[u8]) -> String {
+    let mut out = String::new();
+    let mut i = 0;
+    while i < input.len() {
+        let b = |j: usize| {
+            if i + j < input.len() {
+                input[i + j]
+            } else {
+                0u8
+            }
+        };
+        out.push(alphabet[(b(0) >> 3) as usize] as char);
+        out.push(alphabet[((b(0) & 0x07) << 2 | b(1) >> 6) as usize] as char);
+        if i + 1 < input.len() {
+            out.push(alphabet[((b(1) & 0x3e) >> 1) as usize] as char);
+            out.push(alphabet[((b(1) & 0x01) << 4 | b(2) >> 4) as usize] as char);
+        } else {
+            out.push_str("==");
+        }
+        if i + 2 < input.len() {
+            out.push(alphabet[((b(2) & 0x0f) << 1 | b(3) >> 7) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if i + 3 < input.len() {
+            out.push(alphabet[((b(3) & 0x7c) >> 2) as usize] as char);
+            out.push(alphabet[((b(3) & 0x03) << 3 | b(4) >> 5) as usize] as char);
+        } else {
+            out.push_str("==");
+        }
+        if i + 4 < input.len() {
+            out.push(alphabet[(b(4) & 0x1f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        i += 5;
+    }
+    out
+}
+
+/// Base32-family decode. `alphabet` contains valid chars (case-insensitive for standard,
+/// `hex_mode` for base32hex where digits 0-9 precede letters).
+fn base32_decode_alphabet(input: &str, _alphabet: &str, hex_mode: bool) -> Result<Vec<u8>, String> {
+    let upper = input.to_uppercase();
+    let cleaned: String = upper.chars().filter(|c| !c.is_whitespace()).collect();
+
+    let val = |c: char| -> Option<u8> {
+        if hex_mode {
+            match c {
+                '0'..='9' => Some(c as u8 - b'0'),
+                'A'..='V' => Some(c as u8 - b'A' + 10),
+                _ => None,
+            }
+        } else {
+            match c {
+                'A'..='Z' => Some(c as u8 - b'A'),
+                '2'..='7' => Some(c as u8 - b'2' + 26),
+                _ => None,
+            }
+        }
+    };
+
+    let mut out = Vec::new();
+    let chars: Vec<char> = cleaned.chars().collect();
+    let mut i = 0;
+    while i + 7 < chars.len() || (i < chars.len() && chars.len() - i == 8) {
+        if chars.len() < i + 8 {
+            break;
+        }
+        let chunk = &chars[i..i + 8];
+        let v: Vec<Option<u8>> = chunk.iter().map(|&c| val(c)).collect();
+        if let (Some(c0), Some(c1)) = (v[0], v[1]) {
+            out.push((c0 << 3) | (c1 >> 2));
+        } else {
+            break;
+        }
+        if chunk[2] != '=' {
+            if let (Some(c1), Some(c2), Some(c3)) = (v[1], v[2], v[3]) {
+                out.push((c1 << 6) | (c2 << 1) | (c3 >> 4));
+            }
+        }
+        if chunk[4] != '=' {
+            if let (Some(c3), Some(c4)) = (v[3], v[4]) {
+                out.push((c3 << 4) | (c4 >> 1));
+            }
+        }
+        if chunk[5] != '=' {
+            if let (Some(c4), Some(c5), Some(c6)) = (v[4], v[5], v[6]) {
+                out.push((c4 << 7) | (c5 << 2) | (c6 >> 3));
+            }
+        }
+        if chunk[7] != '=' {
+            if let (Some(c6), Some(c7)) = (v[6], v[7]) {
+                out.push((c6 << 5) | c7);
+            }
+        }
+        i += 8;
+    }
+    Ok(out)
+}
+
 pub fn call_string_method(name: &str, args: &[Value]) -> CorvoResult<Value> {
     let method = name.strip_prefix("string.").unwrap();
     let target = args
@@ -136,6 +238,189 @@ pub fn call_string_method(name: &str, args: &[Value]) -> CorvoResult<Value> {
             let regex = Regex::new(&re)
                 .map_err(|e| CorvoError::runtime(format!("invalid glob pattern: {}", e)))?;
             Ok(Value::Boolean(regex.is_match(target)))
+        }
+        "byte_slice" => {
+            // args[0] is the target string (bound above), args[1] = start byte index,
+            // args[2] = end byte index (optional, defaults to string length).
+            let bytes = target.as_bytes();
+            let start = args.get(1).and_then(|v| v.as_number()).unwrap_or(0.0) as usize;
+            let end = args
+                .get(2)
+                .and_then(|v| v.as_number())
+                .map(|n| n as usize)
+                .unwrap_or(bytes.len());
+            let end = end.min(bytes.len());
+            let start = start.min(end);
+            Ok(Value::String(
+                String::from_utf8_lossy(&bytes[start..end]).into_owned(),
+            ))
+        }
+        "trim_start" => Ok(Value::String(target.trim_start().to_string())),
+        "trim_end" => Ok(Value::String(target.trim_end().to_string())),
+        "substring" => {
+            // string.substring(s, start, end?) — Unicode-character-aware slice.
+            // start is inclusive, end is exclusive and defaults to string length.
+            let chars: Vec<char> = target.chars().collect();
+            let len = chars.len();
+            let start = args.get(1).and_then(|v| v.as_number()).unwrap_or(0.0) as usize;
+            let end = args
+                .get(2)
+                .and_then(|v| v.as_number())
+                .map(|n| n as usize)
+                .unwrap_or(len);
+            let start = start.min(len);
+            let end = end.min(len);
+            let start = start.min(end);
+            Ok(Value::String(chars[start..end].iter().collect()))
+        }
+        "index_of" => {
+            // string.index_of(s, needle, start?) — first char-index of needle, or -1.
+            let needle = args
+                .get(1)
+                .and_then(|v| v.as_string())
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let start_char = args.get(2).and_then(|v| v.as_number()).unwrap_or(0.0) as usize;
+            if needle.is_empty() {
+                return Ok(Value::Number(start_char as f64));
+            }
+            // Convert char-start to byte-start.
+            let byte_offset: usize = target
+                .char_indices()
+                .nth(start_char)
+                .map(|(b, _)| b)
+                .unwrap_or(target.len());
+            let slice = &target[byte_offset..];
+            match slice.find(needle) {
+                Some(byte_pos) => {
+                    // byte_pos is relative to slice; convert to char index in full string.
+                    let abs_byte = byte_offset + byte_pos;
+                    let char_idx = target[..abs_byte].chars().count();
+                    Ok(Value::Number(char_idx as f64))
+                }
+                None => Ok(Value::Number(-1.0)),
+            }
+        }
+        "char_at" => {
+            // string.char_at(s, index) — Unicode character at index, or error if out of range.
+            let idx = args.get(1).and_then(|v| v.as_number()).ok_or_else(|| {
+                CorvoError::invalid_argument("string.char_at requires an index (number)")
+            })? as usize;
+            target
+                .chars()
+                .nth(idx)
+                .map(|c| Value::String(c.to_string()))
+                .ok_or_else(|| {
+                    CorvoError::runtime("string.char_at: index out of bounds".to_string())
+                })
+        }
+        "repeat" => {
+            // string.repeat(s, count) — repeat the string count times.
+            let n = args.get(1).and_then(|v| v.as_number()).ok_or_else(|| {
+                CorvoError::invalid_argument("string.repeat requires a count (number)")
+            })? as usize;
+            Ok(Value::String(target.repeat(n)))
+        }
+        "replace_first" => {
+            // string.replace_first(s, old, new) — replace only the first occurrence.
+            let old = args
+                .get(1)
+                .and_then(|v| v.as_string())
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let new = args
+                .get(2)
+                .and_then(|v| v.as_string())
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            Ok(Value::String(target.replacen(old, new, 1)))
+        }
+        "count" => {
+            // string.count(s, needle) — count non-overlapping occurrences of needle.
+            let needle = args
+                .get(1)
+                .and_then(|v| v.as_string())
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            if needle.is_empty() {
+                // Matches Python/JS: empty needle returns char_count + 1.
+                return Ok(Value::Number((target.chars().count() + 1) as f64));
+            }
+            Ok(Value::Number(target.matches(needle).count() as f64))
+        }
+        "chars" => {
+            // string.chars(s) — split into a list of individual Unicode characters.
+            let list: Vec<Value> = target
+                .chars()
+                .map(|c| Value::String(c.to_string()))
+                .collect();
+            Ok(Value::List(list))
+        }
+        "base64_encode" => {
+            use base64::Engine as _;
+            Ok(Value::String(
+                base64::engine::general_purpose::STANDARD.encode(target.as_bytes()),
+            ))
+        }
+        "base64_decode" => {
+            use base64::Engine as _;
+            let cleaned: String = target.chars().filter(|c| !c.is_whitespace()).collect();
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(cleaned.as_bytes())
+                .map_err(|e| CorvoError::invalid_argument(format!("base64_decode: {}", e)))?;
+            String::from_utf8(bytes).map(Value::String).map_err(|e| {
+                CorvoError::invalid_argument(format!("base64_decode: not valid UTF-8: {}", e))
+            })
+        }
+        "base32_encode" => Ok(Value::String(base32_encode_alphabet(
+            target.as_bytes(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+        ))),
+        "base32_decode" => {
+            let bytes = base32_decode_alphabet(
+                target,
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz234567",
+                false,
+            )
+            .map_err(|e| CorvoError::invalid_argument(format!("base32_decode: {}", e)))?;
+            String::from_utf8(bytes).map(Value::String).map_err(|e| {
+                CorvoError::invalid_argument(format!("base32_decode: not valid UTF-8: {}", e))
+            })
+        }
+        "base32hex_encode" => Ok(Value::String(base32_encode_alphabet(
+            target.as_bytes(),
+            b"0123456789ABCDEFGHIJKLMNOPQRSTUV",
+        ))),
+        "base32hex_decode" => {
+            let bytes = base32_decode_alphabet(
+                target,
+                "0123456789ABCDEFGHIJKLMNOPQRSTUVabcdefghijklmnopqrstuv",
+                true,
+            )
+            .map_err(|e| CorvoError::invalid_argument(format!("base32hex_decode: {}", e)))?;
+            String::from_utf8(bytes).map(Value::String).map_err(|e| {
+                CorvoError::invalid_argument(format!("base32hex_decode: not valid UTF-8: {}", e))
+            })
+        }
+        "hex_encode" => {
+            let hex: String = target.bytes().map(|b| format!("{:02x}", b)).collect();
+            Ok(Value::String(hex))
+        }
+        "hex_decode" => {
+            let cleaned: String = target.chars().filter(|c| !c.is_whitespace()).collect();
+            if !cleaned.len().is_multiple_of(2) {
+                return Err(CorvoError::invalid_argument(
+                    "hex_decode: odd number of hex digits",
+                ));
+            }
+            let bytes: Result<Vec<u8>, _> = (0..cleaned.len() / 2)
+                .map(|i| u8::from_str_radix(&cleaned[i * 2..i * 2 + 2], 16))
+                .collect();
+            let bytes =
+                bytes.map_err(|e| CorvoError::invalid_argument(format!("hex_decode: {}", e)))?;
+            String::from_utf8(bytes).map(Value::String).map_err(|e| {
+                CorvoError::invalid_argument(format!("hex_decode: not valid UTF-8: {}", e))
+            })
         }
         _ => Err(CorvoError::unknown_function(format!("string.{}", method))),
     }
@@ -1000,6 +1285,239 @@ mod tests {
             call_string_method("string.is_empty", &[Value::String("a".to_string())]).unwrap(),
             Value::Boolean(false)
         );
+    }
+
+    // --- New String Method Tests ---
+
+    #[test]
+    fn test_string_trim_start() {
+        assert_eq!(
+            call_string_method(
+                "string.trim_start",
+                &[Value::String("  hello  ".to_string())]
+            )
+            .unwrap(),
+            Value::String("hello  ".to_string())
+        );
+        assert_eq!(
+            call_string_method("string.trim_start", &[Value::String("hello".to_string())]).unwrap(),
+            Value::String("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_trim_end() {
+        assert_eq!(
+            call_string_method("string.trim_end", &[Value::String("  hello  ".to_string())])
+                .unwrap(),
+            Value::String("  hello".to_string())
+        );
+        assert_eq!(
+            call_string_method("string.trim_end", &[Value::String("hello".to_string())]).unwrap(),
+            Value::String("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_substring() {
+        // Basic substring
+        assert_eq!(
+            call_string_method(
+                "string.substring",
+                &[
+                    Value::String("hello world".to_string()),
+                    Value::Number(6.0),
+                    Value::Number(11.0),
+                ]
+            )
+            .unwrap(),
+            Value::String("world".to_string())
+        );
+        // Omit end → to end of string
+        assert_eq!(
+            call_string_method(
+                "string.substring",
+                &[Value::String("hello world".to_string()), Value::Number(6.0),]
+            )
+            .unwrap(),
+            Value::String("world".to_string())
+        );
+        // Out-of-range end clamps to len
+        assert_eq!(
+            call_string_method(
+                "string.substring",
+                &[
+                    Value::String("hi".to_string()),
+                    Value::Number(0.0),
+                    Value::Number(100.0),
+                ]
+            )
+            .unwrap(),
+            Value::String("hi".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_index_of() {
+        assert_eq!(
+            call_string_method(
+                "string.index_of",
+                &[
+                    Value::String("hello world".to_string()),
+                    Value::String("world".to_string()),
+                ]
+            )
+            .unwrap(),
+            Value::Number(6.0)
+        );
+        // Not found returns -1
+        assert_eq!(
+            call_string_method(
+                "string.index_of",
+                &[
+                    Value::String("hello".to_string()),
+                    Value::String("xyz".to_string()),
+                ]
+            )
+            .unwrap(),
+            Value::Number(-1.0)
+        );
+        // Start offset
+        assert_eq!(
+            call_string_method(
+                "string.index_of",
+                &[
+                    Value::String("aabaa".to_string()),
+                    Value::String("a".to_string()),
+                    Value::Number(2.0),
+                ]
+            )
+            .unwrap(),
+            Value::Number(3.0)
+        );
+    }
+
+    #[test]
+    fn test_string_char_at() {
+        assert_eq!(
+            call_string_method(
+                "string.char_at",
+                &[Value::String("hello".to_string()), Value::Number(1.0),]
+            )
+            .unwrap(),
+            Value::String("e".to_string())
+        );
+        // Out-of-range is an error
+        assert!(call_string_method(
+            "string.char_at",
+            &[Value::String("hi".to_string()), Value::Number(10.0),]
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_string_repeat() {
+        assert_eq!(
+            call_string_method(
+                "string.repeat",
+                &[Value::String("ab".to_string()), Value::Number(3.0),]
+            )
+            .unwrap(),
+            Value::String("ababab".to_string())
+        );
+        assert_eq!(
+            call_string_method(
+                "string.repeat",
+                &[Value::String("x".to_string()), Value::Number(0.0),]
+            )
+            .unwrap(),
+            Value::String(String::new())
+        );
+    }
+
+    #[test]
+    fn test_string_replace_first() {
+        assert_eq!(
+            call_string_method(
+                "string.replace_first",
+                &[
+                    Value::String("aabbaa".to_string()),
+                    Value::String("a".to_string()),
+                    Value::String("z".to_string()),
+                ]
+            )
+            .unwrap(),
+            Value::String("zabbaa".to_string())
+        );
+        // No match: unchanged
+        assert_eq!(
+            call_string_method(
+                "string.replace_first",
+                &[
+                    Value::String("hello".to_string()),
+                    Value::String("x".to_string()),
+                    Value::String("y".to_string()),
+                ]
+            )
+            .unwrap(),
+            Value::String("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_count() {
+        assert_eq!(
+            call_string_method(
+                "string.count",
+                &[
+                    Value::String("aabbaa".to_string()),
+                    Value::String("a".to_string()),
+                ]
+            )
+            .unwrap(),
+            Value::Number(4.0)
+        );
+        assert_eq!(
+            call_string_method(
+                "string.count",
+                &[
+                    Value::String("hello".to_string()),
+                    Value::String("x".to_string()),
+                ]
+            )
+            .unwrap(),
+            Value::Number(0.0)
+        );
+        // Non-overlapping
+        assert_eq!(
+            call_string_method(
+                "string.count",
+                &[
+                    Value::String("aaa".to_string()),
+                    Value::String("aa".to_string()),
+                ]
+            )
+            .unwrap(),
+            Value::Number(1.0)
+        );
+    }
+
+    #[test]
+    fn test_string_chars() {
+        let result =
+            call_string_method("string.chars", &[Value::String("hi!".to_string())]).unwrap();
+        match result {
+            Value::List(items) => {
+                assert_eq!(items.len(), 3);
+                assert_eq!(items[0], Value::String("h".to_string()));
+                assert_eq!(items[1], Value::String("i".to_string()));
+                assert_eq!(items[2], Value::String("!".to_string()));
+            }
+            _ => panic!("Expected List"),
+        }
+        // Empty string → empty list
+        let empty = call_string_method("string.chars", &[Value::String(String::new())]).unwrap();
+        assert!(matches!(empty, Value::List(v) if v.is_empty()));
     }
 
     // --- New Number Method Tests ---

@@ -32,6 +32,8 @@ pub fn call(
 ) -> CorvoResult<Value> {
     match name {
         "sys.echo" => sys::echo(args, named_args),
+        "sys.print" => sys::print_no_newline(args, named_args),
+        "sys.eprint" => sys::eprint_newline(args, named_args),
         "sys.read_line" => sys::read_line(args, named_args),
         "sys.sleep" => sys::sleep(args, named_args),
         "sys.panic" => sys::panic(args, named_args),
@@ -44,6 +46,9 @@ pub fn call(
         "os.info" => os::info(args, named_args),
         "os.argv" => os::argv(args, named_args, state),
         "os.getcwd" => os::getcwd(args, named_args),
+        "os.uptime" => os::uptime(args, named_args),
+        "os.load_average" => os::load_average(args, named_args),
+        "os.user_count" => os::user_count(args, named_args),
 
         "args.scan" => args::scan(args, named_args),
         "args.parse" => args::parse(args, named_args),
@@ -73,7 +78,10 @@ pub fn call(
         "fs.path_relative" => fs::path_relative(args, named_args),
 
         "time.format_local" => time::format_local(args, named_args),
+        "time.format_utc" => time::format_utc(args, named_args),
         "time.unix_now" => time::unix_now(args, named_args),
+        "time.parse_date" => time::parse_date(args, named_args),
+        "time.boot_time" => time::boot_time(args, named_args),
 
         "http.get" => http::get(args, named_args),
         "http.post" => http::post(args, named_args),
@@ -94,6 +102,7 @@ pub fn call(
         "crypto.hash" => crypto::hash(args, named_args),
         "crypto.hash_file" => crypto::hash_file(args, named_args),
         "crypto.checksum" => crypto::checksum(args, named_args),
+        "crypto.crc32_file" => crypto::crc32_file(args, named_args),
         "crypto.encrypt" => crypto::encrypt(args, named_args),
         "crypto.decrypt" => crypto::decrypt(args, named_args),
         "crypto.uuid" => crypto::uuid(args, named_args),
